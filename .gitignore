@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Poetry — keep poetry.lock committed
+
+# Environment
+.env
+.env.local
+
+# Project outputs
+exports/*
+!exports/.gitkeep
+models/*
+!models/.gitkeep
+recordings/
+*.wav
+*.mp3
+*.mp4
+*.mkv
+*.mov
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# OS
+Thumbs.db
+
+# Ruff
+.ruff_cache/
+
+# Logs
+*.log
+logs/

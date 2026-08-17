@@ -1,0 +1,68 @@
+[tool.poetry]
+name = "wrenify"
+version = "0.1.0"
+description = "A local-first karaoke studio with real-time pitch correction, synced lyrics, and webcam recording."
+authors = ["Rishab Thapa <MrRishabThapa@users.noreply.github.com>"]
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/MrRishabThapa/wrenify"
+repository = "https://github.com/MrRishabThapa/wrenify"
+keywords = ["karaoke", "autotune", "audio", "voice", "music", "pyqt6"]
+packages = [{ include = "wrenify" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+# UI
+PyQt6 = "^6.6.0"
+
+# Audio processing
+sounddevice = "^0.4.6"
+numpy = "^1.26.0"
+scipy = "^1.11.0"
+soundfile = "^0.12.1"
+librosa = "^0.10.1"
+pyworld = "^0.3.4"
+pedalboard = "^0.8.1"
+
+# Lyrics
+syncedlyrics = "^0.7.0"
+lyricsgenius = "^3.0.1"
+
+# Speech recognition (offline)
+vosk = "^0.3.45"
+
+# Video / webcam
+opencv-python = "^4.8.0"
+moviepy = "^1.0.3"
+Pillow = "^10.0.0"
+
+# Utilities
+python-dotenv = "^1.0.0"
+rich = "^13.6.0"
+loguru = "^0.7.2"
+setuptools = "<81"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.1.0"
+pytest = "^7.4.0"
+pytest-qt = "^4.2.0"
+
+[tool.poetry.scripts]
+wrenify = "wrenify.main:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "N"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["wrenify/tests"]
+python_files = "test_*.py"
