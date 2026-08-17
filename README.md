@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./assets/logo.png" alt="Wrenify" width="140" />
+<img src="./assets/wrenify.png" alt="Wrenify" width="140" />
 
 # Wrenify
 
