@@ -19,11 +19,14 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from threading import Lock
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from loguru import logger
 
 from wrenify.lyrics.parser import ParsedLyrics
+
+if TYPE_CHECKING:
+    from wrenify.audio.player import AudioPlayer
 
 
 class WordState(Enum):
@@ -61,6 +64,10 @@ class Timeline:
     """
     Master clock and state tracker for a karaoke session.
 
+    When an AudioPlayer is provided, song time tracks the actual
+    audio position (pause/resume/seek all stay in sync). Without
+    one it falls back to a wall-clock monotonic timer.
+
     Thread-safe: state can be updated from speech recognition thread
     while read from the UI thread.
 
@@ -79,15 +86,23 @@ class Timeline:
     # How far ahead/behind a sung word can be to still count
     MATCH_WINDOW_SEC: float = 1.5
 
-    def __init__(self, lyrics: ParsedLyrics) -> None:
+    def __init__(
+        self,
+        lyrics: ParsedLyrics,
+        player: Optional["AudioPlayer"] = None,
+    ) -> None:
         self.lyrics = lyrics
         self.words: list[TrackedWord] = self._build_tracked_words(lyrics)
         self._start_time: Optional[float] = None
         self._paused_at: Optional[float] = None
         self._pause_offset: float = 0.0
+        self._player = player
         self._lock = Lock()
 
-        logger.info(f"Timeline created with {len(self.words)} trackable words")
+        logger.info(
+            f"Timeline created with {len(self.words)} trackable words "
+            f"({'player-synced' if player else 'clock-synced'})"
+        )
 
     def _build_tracked_words(self, lyrics: ParsedLyrics) -> list[TrackedWord]:
         """Flatten lyrics into a list of TrackedWord objects."""
@@ -164,6 +179,11 @@ class Timeline:
 
     def now(self) -> float:
         """Get current song time in seconds."""
+        # Prefer player position if we have one
+        if self._player is not None:
+            return self._player.position_sec()
+
+        # Fall back to wall clock
         with self._lock:
             if self._start_time is None:
                 return 0.0
