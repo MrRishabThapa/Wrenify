@@ -187,14 +187,18 @@ class WebcamCapture:
 # ────────────────────── Standalone test ──────────────────────
 
 def _check_display_env() -> None:
-    """Warn if running on Wayland without XWayland fallback."""
+    """Make OpenCV windows work under Wayland and silence Qt warnings."""
     session = os.environ.get("XDG_SESSION_TYPE", "").lower()
     if session == "wayland":
+        # cv2's bundled Qt ships an xcb plugin but no wayland plugin;
+        # force xcb so preview windows render through XWayland.
+        os.environ["QT_QPA_PLATFORM"] = "xcb"
         logger.info(
-            "Detected Wayland session. OpenCV window will use XWayland. "
-            "If the preview does not appear, run: "
-            "export QT_QPA_PLATFORM=xcb"
+            "Wayland session detected: forcing QT_QPA_PLATFORM=xcb "
+            "(preview runs through XWayland)"
         )
+    # kvantum/qt5ct style overrides are not available inside cv2's Qt build
+    os.environ.pop("QT_STYLE_OVERRIDE", None)
 
 
 if __name__ == "__main__":
@@ -216,12 +220,13 @@ if __name__ == "__main__":
     console.print(f"[green]Found cameras at indices:[/green] {cameras}\n")
     console.print("[yellow]Opening live preview. Press [bold]q[/bold] to quit.[/yellow]\n")
 
-    with WebcamCapture() as cam:
-        # Wait a moment for the first frame
-        time.sleep(0.5)
+    try:
+        with WebcamCapture() as cam:
+            # Wait a moment for the first frame
+            time.sleep(0.5)
 
-        window_name = "Wrenify Webcam Preview (press q to quit)"
-        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+            window_name = "Wrenify Webcam Preview (press q to quit)"
+            cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
         fps_display_time = time.monotonic()
         fps_count = 0
@@ -266,6 +271,10 @@ if __name__ == "__main__":
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
 
-        cv2.destroyAllWindows()
+            cv2.destroyAllWindows()
 
-    console.print(f"\n[green]Captured {cam.frame_count()} frames in buffer at exit[/green]")
+        console.print(f"\n[green]Captured {cam.frame_count()} frames in buffer at exit[/green]")
+    except KeyboardInterrupt:
+        console.print("\n[dim]Preview interrupted[/dim]")
+        cv2.destroyAllWindows()
+        exit(0)
