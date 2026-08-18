@@ -241,19 +241,20 @@ class MainWindow(QMainWindow):
                 "Speech",
                 "Offline voice recognition, fully local.",
                 [
-                    "Speech-to-text with Vosk models",
-                    "No cloud calls, works without internet",
-                    "Phrase spotting for karaoke alignment",
+                    "Word-level timestamps with faster-whisper",
+                    "Batch transcription of WAV files",
+                    "Live streaming mode with ~1-2s latency",
+                    "Base model in int8 mode: ~800MB RAM",
                 ],
             ),
             PlaceholderPage(
                 "Lyrics",
                 "Time-synced lyrics with word-level highlighting.",
                 [
-                    "Fetch synced lyrics (LRCLIB / Genius)",
-                    "Parse LRC and enhanced LRC formats",
-                    "Phonetic alignment for imperfect sync",
-                    "Karaoke-style line highlighting",
+                    "Fetch synced lyrics (Musixmatch / LRCLIB / NetEase)",
+                    "LRC + enhanced LRC parsing with word timings",
+                    "Phonetic stretching for held notes",
+                    "Karaoke-style line highlighting (planned)",
                 ],
             ),
             PlaceholderPage(
@@ -275,6 +276,12 @@ class MainWindow(QMainWindow):
         status.addPermanentWidget(
             QLabel(
                 f"Auto-tune: {CONFIG.autotune.key} {CONFIG.autotune.scale}"
+            )
+        )
+        status.addPermanentWidget(
+            QLabel(
+                f"Whisper: {CONFIG.speech.model_size} "
+                f"({CONFIG.speech.compute_type})"
             )
         )
         if CONFIG.audio.device_index is not None:
