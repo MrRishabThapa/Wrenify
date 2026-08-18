@@ -229,6 +229,28 @@ def launch_ui() -> None:
     sys.exit(run())
 
 
+def test_full_karaoke() -> None:
+    """Launch a full karaoke session (webcam + lyrics + scoring)."""
+    from PyQt6.QtWidgets import QApplication
+
+    from wrenify.ui.app import THEME_QSS, MainWindow
+
+    lrc_path_str = Prompt.ask("[cyan]Path to .lrc file[/cyan]")
+    lrc_path = Path(lrc_path_str).expanduser()
+
+    if not lrc_path.exists():
+        console.print(f"[red]File not found:[/red] {lrc_path}")
+        return
+
+    app = QApplication(sys.argv)
+    app.setApplicationName("Wrenify")
+    app.setStyleSheet(THEME_QSS)
+    window = MainWindow()
+    window.launch_karaoke(lrc_path)
+    window.show()
+    sys.exit(app.exec())
+
+
 def main() -> None:
     print_banner()
     check_system_resources()
@@ -244,11 +266,12 @@ def main() -> None:
     console.print("  [cyan]8[/cyan] → Parse an LRC lyrics file")
     console.print("  [cyan]9[/cyan] → Fetch lyrics from online")
     console.print("  [cyan]10[/cyan] → Test phonetic word stretcher")
+    console.print("  [cyan]11[/cyan] → Full karaoke session (UI + scoring)")
     console.print("  [cyan]q[/cyan] → Quit\n")
 
     choice = Prompt.ask(
         "→",
-        choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "q"],
+        choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "q"],
         default="1",
     )
 
@@ -272,6 +295,8 @@ def main() -> None:
         test_lyrics_fetcher()
     elif choice == "10":
         test_phonetic_stylizer()
+    elif choice == "11":
+        test_full_karaoke()
     else:
         console.print("[dim]Bye[/dim]")
         sys.exit(0)
