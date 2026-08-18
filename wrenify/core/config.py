@@ -3,6 +3,8 @@ Wrenify Global Configuration
 
 Single source of truth for all app settings.
 Import anywhere with:  from wrenify.core.config import CONFIG
+
+Tuned for 8GB RAM systems. See docstrings for override guidance.
 """
 
 import os
@@ -29,15 +31,25 @@ MODELS_DIR.mkdir(exist_ok=True)
 
 @dataclass
 class AudioConfig:
-    sample_rate:  int  = 44100
-    chunk_size:   int  = 4096
-    channels:     int  = 1
-    dtype:        str  = "float32"
-    device_index: int | None = None
+    """
+    Real-time audio capture settings.
+
+    On 8GB systems, we cap the queue at 30 chunks (~2.8 seconds
+    of buffered audio at 4096-sample chunks / 44.1kHz).
+    """
+
+    sample_rate:    int = 44100
+    chunk_size:     int = 4096
+    channels:       int = 1
+    dtype:          str = "float32"
+    device_index:   int | None = None
+    max_queue_size: int = 30       # Reduced from 50 for 8GB systems
 
 
 @dataclass
 class AutoTuneConfig:
+    """WORLD vocoder pitch correction settings."""
+
     enabled:  bool  = True
     strength: float = 0.7      # 0.0 = natural, 1.0 = T-Pain
     key:      str   = "C"
@@ -46,6 +58,8 @@ class AutoTuneConfig:
 
 @dataclass
 class LyricsConfig:
+    """Lyrics fetching and display settings."""
+
     genius_token: str  = os.getenv("GENIUS_TOKEN", "")
     language:     str  = "en"
     stylize:      bool = True
@@ -53,14 +67,61 @@ class LyricsConfig:
 
 @dataclass
 class VideoConfig:
-    webcam_index: int  = int(os.getenv("WEBCAM_INDEX", "0"))
-    fps:          int  = 30
-    width:        int  = 1280
-    height:       int  = 720
-    codec:        str  = "libx264"
-    audio_codec:  str  = "aac"
-    preset:       str  = "fast"
-    export_format: str = "mp4"
+    """
+    Webcam capture and video export settings.
+
+    On 8GB systems, defaults are 960x540 @ 24fps to reduce
+    both RAM usage and CPU load for encoding.
+
+    A single 720p frame = ~2.7MB uncompressed.
+    A single 540p frame = ~1.5MB uncompressed (44% smaller).
+
+    Bump to 1280x720 @ 30 on systems with 16GB+.
+    """
+
+    webcam_index:  int  = int(os.getenv("WEBCAM_INDEX", "0"))
+    fps:           int  = 24        # Reduced from 30 for 8GB systems
+    width:         int  = 960       # Reduced from 1280 for 8GB systems
+    height:        int  = 540       # Reduced from 720 for 8GB systems
+    codec:         str  = "libx264"
+    audio_codec:   str  = "aac"
+    preset:        str  = "fast"
+    export_format: str  = "mp4"
+
+
+@dataclass
+class SpeechConfig:
+    """
+    Speech recognition settings for faster-whisper.
+
+    Tuned for 8GB RAM + CPU-only systems:
+    - base model: 74MB disk, ~800MB RAM, 5-7x realtime speed
+    - int8 quantization: smallest CPU footprint
+    - beam_size 1: faster + less RAM than default 5
+    - 4-second chunks: fewer transcriptions per minute
+
+    For 16GB+ systems, override in .env:
+        WHISPER_MODEL=small
+        WHISPER_COMPUTE_TYPE=int8
+
+    For CUDA GPU:
+        WHISPER_DEVICE=cuda
+        WHISPER_COMPUTE_TYPE=float16
+        WHISPER_MODEL=medium (or large-v3)
+    """
+
+    model_size:   str  = os.getenv("WHISPER_MODEL", "base")
+    device:       str  = os.getenv("WHISPER_DEVICE", "cpu")
+    compute_type: str  = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
+    language:     str  = "en"
+    beam_size:    int  = 1     # 1 for CPU (5 is default but slow)
+
+    # Streaming settings
+    chunk_duration_sec: float = 4.0   # 4s chunks for less RAM churn
+    overlap_sec:        float = 0.5   # 0.5s overlap for context
+
+    # Model cache directory
+    model_cache_dir: str = str(MODELS_DIR / "whisper")
 
 
 @dataclass
@@ -69,6 +130,7 @@ class AppConfig:
     autotune: AutoTuneConfig = field(default_factory=AutoTuneConfig)
     lyrics:   LyricsConfig   = field(default_factory=LyricsConfig)
     video:    VideoConfig    = field(default_factory=VideoConfig)
+    speech:   SpeechConfig   = field(default_factory=SpeechConfig)
     debug:    bool           = os.getenv("DEBUG", "false").lower() == "true"
 
 
