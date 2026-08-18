@@ -75,6 +75,7 @@ class WelcomePage(QWidget):
         for text in (
             f"Audio: {CONFIG.audio.sample_rate} Hz",
             f"Auto-tune: {CONFIG.autotune.key} {CONFIG.autotune.scale}",
+            f"Whisper: {CONFIG.speech.model_size} ({CONFIG.speech.compute_type})",
             (
                 f"Device: index {CONFIG.audio.device_index}"
                 if CONFIG.audio.device_index is not None
