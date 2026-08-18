@@ -54,20 +54,24 @@ real-time audio, DSP, threading, native UI, file I/O, video processing.
 
 ## Current Status
 
-This project is in **early development**. Here's where I'm at:
+This project is in **early development**. Here is where I am at:
 
 | Module              | Status         |
 | ------------------- | -------------- |
-| Project scaffold    | 🚧 In progress |
-| Audio capture       | 🚧 In progress |
-| Auto-tune engine    | 🚧 In progress |
-| Lyrics fetching     | ⏳ Planned     |
-| Speech recognition  | ⏳ Planned     |
-| PyQt6 UI            | ⏳ Planned     |
-| Webcam integration  | ⏳ Planned     |
-| MP4 export          | ⏳ Planned     |
+| Project scaffold    | Done           |
+| Audio capture       | Done           |
+| Auto-tune engine    | Done           |
+| Effects rack        | Done           |
+| Webcam capture      | Done           |
+| MP4 export          | Done           |
+| Speech recognition  | Done           |
+| PyQt6 UI shell      | Done           |
+| Lyrics fetching     | In progress    |
+| Lyrics sync UI      | Planned        |
+| Song library        | Planned        |
+| End-to-end demo     | Planned        |
 
-Follow the commits if you want to watch me learn Python in real-time.
+Follow the commits to watch the project evolve.
 
 ## Tech Stack
 
@@ -79,7 +83,7 @@ Follow the commits if you want to watch me learn Python in real-time.
 | Pitch engine    | pyworld (WORLD vocoder)         | Industry-grade quality          |
 | Audio analysis  | librosa                         | Solid pitch detection           |
 | Effects         | pedalboard                      | Spotify's audio processing lib  |
-| Speech-to-text  | Vosk                            | Offline, word-level timestamps  |
+| Speech-to-text  | faster-whisper                  | Word-level timestamps, offline |
 | Lyrics          | syncedlyrics + lyricsgenius     | Free, no keys required          |
 | Video           | OpenCV + moviepy                | Battle-tested                   |
 | Package manager | Poetry                          | Feels like npm/yarn             |
@@ -129,17 +133,18 @@ poetry install
 poetry shell
 ```
 
-### Optional: Vosk model for speech recognition
+### Optional: Whisper model for speech recognition
 
-The small English model is ~40 MB and works fine for karaoke:
+The `base` model is ~74 MB and works fine on 8GB systems:
 
 ```bash
-mkdir -p models && cd models
-wget https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
-unzip vosk-model-small-en-us-0.15.zip
-rm vosk-model-small-en-us-0.15.zip
-cd ..
+mkdir -p models
+# The model downloads automatically on first use to models/whisper/
 ```
+
+First run downloads the Whisper model (~74MB) to `models/whisper/`.
+Subsequent runs load it from cache. Set `WHISPER_MODEL` in `.env`
+to override (e.g. `small` for better accuracy on 16GB+ systems).
 
 ### Configuration
 
@@ -196,7 +201,7 @@ wrenify/
     │   └── phonetic.py       # "fallen" → "faaall-eeen"
     │
     ├── speech/
-    │   └── recognizer.py     # Vosk offline STT
+    │   └── recognizer.py     # faster-whisper offline STT
     │
     ├── video/
     │   ├── camera.py         # OpenCV webcam
@@ -241,7 +246,7 @@ CONFIG.audio.chunk_size  = 4096
 - [ ] Phonetic stretching for held notes
 
 **Phase 3 — Speech alignment**
-- [ ] Vosk integration for word recognition
+- [ ] faster-whisper word recognition
 - [ ] Match spoken words to lyric positions
 - [ ] Highlight current word as you sing
 
