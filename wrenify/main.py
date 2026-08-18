@@ -31,6 +31,33 @@ def print_banner() -> None:
     console.print(Panel(text, border_style="magenta", padding=(1, 4)))
 
 
+def check_system_resources() -> None:
+    """Warn if system resources are low before starting Wrenify."""
+    import psutil
+
+    mem = psutil.virtual_memory()
+    available_gb = mem.available / (1024 ** 3)
+    total_gb = mem.total / (1024 ** 3)
+
+    if available_gb < 2.0:
+        console.print(
+            f"[yellow]Warning: Only {available_gb:.1f}GB of {total_gb:.1f}GB "
+            f"RAM available. Close other apps for best performance.[/yellow]"
+        )
+    elif CONFIG.debug:
+        console.print(
+            f"[dim]RAM: {available_gb:.1f}GB / {total_gb:.1f}GB available[/dim]"
+        )
+
+    # Check CPU count for Whisper threading
+    cpu_count = psutil.cpu_count(logical=False) or 1
+    if cpu_count < 2 and CONFIG.debug:
+        console.print(
+            f"[yellow]Warning: Only {cpu_count} CPU core. "
+            f"Whisper will be slow.[/yellow]"
+        )
+
+
 def test_mic() -> None:
     """Live mic level meter for 5 seconds."""
     from wrenify.audio.capture import AudioCapture
@@ -131,6 +158,27 @@ def test_video_export() -> None:
         console.print("[dim]Video export interrupted[/dim]")
 
 
+def test_speech_batch() -> None:
+    """Transcribe a WAV file with word timestamps."""
+    import subprocess
+
+    from rich.prompt import Prompt
+
+    path = Prompt.ask("[cyan]Path to WAV file[/cyan]")
+    subprocess.run([
+        "poetry", "run", "python", "-m", "wrenify.speech.recognizer",
+        path,
+    ])
+
+
+def test_speech_streaming() -> None:
+    """Live speech recognition for 15 seconds."""
+    import subprocess
+    subprocess.run([
+        "poetry", "run", "python", "-m", "wrenify.speech.streaming",
+    ])
+
+
 def launch_ui() -> None:
     """Launch the PyQt6 desktop interface."""
     from wrenify.ui.app import run
@@ -140,6 +188,7 @@ def launch_ui() -> None:
 
 def main() -> None:
     print_banner()
+    check_system_resources()
 
     console.print("\n[bold]Menu:[/bold]")
     console.print("  [cyan]1[/cyan] → Test microphone (5s level meter)")
@@ -147,9 +196,15 @@ def main() -> None:
     console.print("  [cyan]3[/cyan] → Apply effects to a WAV file")
     console.print("  [cyan]4[/cyan] → Test webcam (live preview)")
     console.print("  [cyan]5[/cyan] → Test video export (webcam + mic → MP4)")
+    console.print("  [cyan]6[/cyan] → Speech-to-text on WAV file (batch)")
+    console.print("  [cyan]7[/cyan] → Live speech recognition (streaming)")
     console.print("  [cyan]q[/cyan] → Quit\n")
 
-    choice = Prompt.ask("→", choices=["1", "2", "3", "4", "5", "q"], default="1")
+    choice = Prompt.ask(
+        "→",
+        choices=["1", "2", "3", "4", "5", "6", "7", "q"],
+        default="1",
+    )
 
     if choice == "1":
         test_mic()
@@ -161,6 +216,10 @@ def main() -> None:
         test_webcam()
     elif choice == "5":
         test_video_export()
+    elif choice == "6":
+        test_speech_batch()
+    elif choice == "7":
+        test_speech_streaming()
     else:
         console.print("[dim]Bye[/dim]")
         sys.exit(0)
