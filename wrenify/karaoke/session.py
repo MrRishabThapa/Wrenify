@@ -2,10 +2,11 @@
 Wrenify — Karaoke session orchestrator.
 
 Wires together all the pieces:
+- AudioPlayer (song playback through speakers)
 - AudioCapture (mic input)
 - StreamingRecognizer (speech-to-text)
 - WebcamCapture (video)
-- Timeline (state tracking)
+- Timeline (state tracking, synced to the player)
 - WordMatcher (scoring logic)
 
 Emits Qt signals for UI updates.
@@ -19,10 +20,12 @@ from loguru import logger
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from wrenify.audio.capture import AudioCapture
+from wrenify.audio.player import AudioPlayer
 from wrenify.karaoke.matcher import WordMatcher
 from wrenify.karaoke.scorer import Scorer, ScoreReport
 from wrenify.karaoke.timeline import Timeline
-from wrenify.lyrics.parser import ParsedLyrics
+from wrenify.lyrics.parser import LRCParser
+from wrenify.songs.song import Song
 from wrenify.speech.recognizer import Word
 from wrenify.speech.streaming import StreamingRecognizer
 from wrenify.video.camera import WebcamCapture
@@ -31,6 +34,10 @@ from wrenify.video.camera import WebcamCapture
 class KaraokeSession(QObject):
     """
     Runs a full karaoke session end-to-end.
+
+    The instrumental track plays through the speakers while the
+    timeline syncs to the actual audio position, so lyrics highlight
+    in sync with the music.
 
     Emits:
         tick_signal(float)        — every UI update tick (song time)
@@ -44,27 +51,30 @@ class KaraokeSession(QObject):
 
     @property
     def duration(self) -> float:
-        """Effective song duration in seconds (used for auto-stop)."""
+        """Song duration in seconds (from the loaded audio)."""
         return self._effective_duration
 
-    def __init__(self, lyrics: ParsedLyrics, parent: Optional[QObject] = None) -> None:
+    def __init__(self, song: Song, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
-        self.lyrics = lyrics
+        self.song = song
 
-        self.timeline = Timeline(lyrics)
+        # Parse lyrics from the song's .lrc file
+        parser = LRCParser()
+        self.lyrics = parser.parse_file(song.lyrics_path)
+
+        # Load the instrumental and let the timeline sync to it
+        self.player = AudioPlayer()
+        self.player.load(song.instrumental_path)
+
+        self.timeline = Timeline(self.lyrics, player=self.player)
         self.matcher  = WordMatcher(self.timeline)
         self.scorer   = Scorer()
 
-        # Auto-stop point: prefer [length:] metadata, fall back to
-        # the last word's end time (most fetched LRCs lack duration).
-        if lyrics.duration:
-            self._effective_duration = lyrics.duration
-        elif self.timeline.words:
-            self._effective_duration = (
-                max(w.end for w in self.timeline.words) + 3.0
-            )
-        else:
-            self._effective_duration = 0.0
+        # Auto-stop point: prefer audio duration, fall back to the
+        # last word's end time (some LRCs lack timing metadata).
+        self._effective_duration = self.player.duration_sec() or (
+            max((w.end for w in self.timeline.words), default=0.0) + 3.0
+        )
 
         self.audio_capture: Optional[AudioCapture] = None
         self.streamer:      Optional[StreamingRecognizer] = None
@@ -76,13 +86,14 @@ class KaraokeSession(QObject):
         self._ui_timer.timeout.connect(self._on_tick)
 
         self._running = False
+        self._song_started = False
 
     def start(self) -> None:
         """Start the karaoke session."""
         if self._running:
             return
 
-        logger.info("Starting karaoke session")
+        logger.info(f"Starting karaoke: {self.song.display_name}")
 
         # Start webcam (optional — view falls back to dark background)
         try:
@@ -100,14 +111,15 @@ class KaraokeSession(QObject):
             logger.warning(f"Mic unavailable: {e}")
             self.audio_capture = None
 
+        # Start the music (before Whisper warm-up so audio plays ASAP)
+        self.player.play(start_position_sec=0.0)
+        self._song_started = True
+
         # Start streaming recognizer with matcher as callback
         self.streamer = StreamingRecognizer(
             on_words_callback=self._on_words_recognized
         )
         self.streamer.start()
-
-        # Start timeline clock
-        self.timeline.start()
 
         # Forward audio chunks to streamer (only if both are alive)
         if self.audio_capture is not None:
@@ -119,7 +131,7 @@ class KaraokeSession(QObject):
         # Start UI ticker
         self._ui_timer.start()
         self._running = True
-        logger.info("Karaoke session running")
+        logger.info("Karaoke session running with music")
 
     def stop(self) -> None:
         """Stop the session and emit final score."""
@@ -133,7 +145,8 @@ class KaraokeSession(QObject):
             self._audio_forwarder.stop()
             self._audio_forwarder = None
 
-        self.timeline.stop()
+        # Stop the song
+        self.player.stop()
 
         if self.streamer is not None:
             self.streamer.stop()
@@ -150,12 +163,12 @@ class KaraokeSession(QObject):
         self.finished_signal.emit(report)
 
     def pause(self) -> None:
-        """Pause the session clock."""
-        self.timeline.pause()
+        """Pause the song; the timeline follows the player."""
+        self.player.pause()
 
     def resume(self) -> None:
-        """Resume the session clock."""
-        self.timeline.resume()
+        """Resume the song; the timeline follows the player."""
+        self.player.resume()
 
     def _on_tick(self) -> None:
         """Called ~30 times per second from UI timer."""
@@ -163,8 +176,9 @@ class KaraokeSession(QObject):
         self.timeline.update_word_states(current_time)
         self.tick_signal.emit(current_time)
 
-        # Auto-stop if past the song end
-        if current_time > self._effective_duration + 2.0:
+        # Auto-stop when the song finishes playing
+        if self._song_started and self.player.is_finished():
+            logger.info("Song finished, stopping session")
             self.stop()
 
     def _forward_audio(self) -> None:
