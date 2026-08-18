@@ -216,6 +216,32 @@ def test_lyrics_fetcher() -> None:
     subprocess.run(["poetry", "run", "python", "-m", "wrenify.lyrics.fetcher"])
 
 
+def test_fetch_instrumental() -> None:
+    """Fetch an instrumental track from YouTube (mp3)."""
+    from wrenify.songs.instrumental import InstrumentalFetcher
+
+    title = Prompt.ask("[cyan]Song title[/cyan]")
+    artist = Prompt.ask(
+        "[cyan]Artist (optional)[/cyan]",
+        default="",
+    )
+
+    console.print("\n[dim]Searching YouTube for a clean instrumental...[/dim]")
+    fetcher = InstrumentalFetcher()
+    path = fetcher.search(title, artist or None)
+
+    if path is not None:
+        console.print(f"\n[green]Saved:[/green] {path}")
+        console.print(
+            "[dim]Next: option 11 -> pick this file + your .lrc[/dim]"
+        )
+    else:
+        console.print(
+            "\n[yellow]No suitable instrumental found. "
+            "Try a different song or check your connection.[/yellow]"
+        )
+
+
 def test_phonetic_stylizer() -> None:
     """Demonstrate word stretching for held notes."""
     import subprocess
@@ -266,11 +292,14 @@ def main() -> None:
     console.print("  [cyan]9[/cyan] → Fetch lyrics from online")
     console.print("  [cyan]10[/cyan] → Test phonetic word stretcher")
     console.print("  [cyan]11[/cyan] → Full karaoke session (UI + scoring)")
+    console.print("  [cyan]12[/cyan] → Fetch instrumental from YouTube")
     console.print("  [cyan]q[/cyan] → Quit\n")
 
     choice = Prompt.ask(
         "→",
-        choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "q"],
+        choices=[
+            "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "q",
+        ],
         default="1",
     )
 
@@ -296,6 +325,8 @@ def main() -> None:
         test_phonetic_stylizer()
     elif choice == "11":
         test_full_karaoke()
+    elif choice == "12":
+        test_fetch_instrumental()
     else:
         console.print("[dim]Bye[/dim]")
         sys.exit(0)
