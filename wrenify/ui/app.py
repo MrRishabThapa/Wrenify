@@ -1,6 +1,8 @@
 """Wrenify — application window, theme and entry point."""
 
 import sys
+from pathlib import Path
+from typing import Optional
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
@@ -15,6 +17,11 @@ from PyQt6.QtWidgets import (
 )
 
 from wrenify.core.config import CONFIG
+from wrenify.karaoke.scorer import ScoreReport
+from wrenify.karaoke.session import KaraokeSession
+from wrenify.lyrics.parser import LRCParser
+from wrenify.ui.karaoke_view import KaraokeView
+from wrenify.ui.results_view import ResultsView
 from wrenify.ui.widgets import (
     LOGO_PATH,
     LogoLabel,
@@ -163,6 +170,15 @@ class MainWindow(QMainWindow):
         self.resize(1280, 800)
         self.setWindowIcon(QIcon(str(LOGO_PATH)))
 
+        self.session: Optional[KaraokeSession] = None
+        self.karaoke_view: Optional[KaraokeView] = None
+        self.results_view: Optional[ResultsView] = None
+        self._last_lrc: Optional[Path] = None
+        self._status_labels: list[QLabel] = []
+
+        self._build_main_ui()
+
+    def _build_main_ui(self) -> None:
         self.nav_buttons: list[NavButton] = []
 
         root = QWidget()
@@ -272,27 +288,53 @@ class MainWindow(QMainWindow):
 
     def _build_status_bar(self) -> None:
         status = self.statusBar()
-        status.addPermanentWidget(QLabel(f"Audio: {CONFIG.audio.sample_rate} Hz"))
-        status.addPermanentWidget(
-            QLabel(
-                f"Auto-tune: {CONFIG.autotune.key} {CONFIG.autotune.scale}"
-            )
-        )
-        status.addPermanentWidget(
-            QLabel(
-                f"Whisper: {CONFIG.speech.model_size} "
-                f"({CONFIG.speech.compute_type})"
-            )
-        )
-        if CONFIG.audio.device_index is not None:
-            status.addPermanentWidget(
-                QLabel(f"Device: index {CONFIG.audio.device_index}")
-            )
-        else:
-            status.addPermanentWidget(QLabel("Device: system default"))
-        status.addPermanentWidget(
-            QLabel("Debug: on" if CONFIG.debug else "Debug: off")
-        )
+        for label in self._status_labels:
+            status.removeWidget(label)
+            label.deleteLater()
+        self._status_labels.clear()
+
+        for text in (
+            f"Audio: {CONFIG.audio.sample_rate} Hz",
+            f"Auto-tune: {CONFIG.autotune.key} {CONFIG.autotune.scale}",
+            f"Whisper: {CONFIG.speech.model_size} "
+            f"({CONFIG.speech.compute_type})",
+            f"Device: index {CONFIG.audio.device_index}"
+            if CONFIG.audio.device_index is not None
+            else "Device: system default",
+            "Debug: on" if CONFIG.debug else "Debug: off",
+        ):
+            label = QLabel(text)
+            status.addPermanentWidget(label)
+            self._status_labels.append(label)
+
+    def launch_karaoke(self, lrc_path: Path) -> None:
+        """Start a karaoke session with the given .lrc file."""
+        parser = LRCParser()
+        lyrics = parser.parse_file(lrc_path)
+
+        self._last_lrc = lrc_path
+        self.session = KaraokeSession(lyrics, parent=self)
+        self.karaoke_view = KaraokeView(self.session)
+        self.session.finished_signal.connect(self._show_results)
+
+        self.setCentralWidget(self.karaoke_view)
+        self.session.start()
+
+    def _show_results(self, report: ScoreReport) -> None:
+        """Show results screen after session ends."""
+        self.results_view = ResultsView(report)
+        self.results_view.retry_signal.connect(self._retry)
+        self.results_view.exit_signal.connect(self._back_to_menu)
+        self.setCentralWidget(self.results_view)
+
+    def _retry(self) -> None:
+        if self._last_lrc is not None:
+            self.launch_karaoke(self._last_lrc)
+
+    def _back_to_menu(self) -> None:
+        """Restore the main navigation UI after a karaoke session."""
+        self.setCentralWidget(QWidget())
+        self._build_main_ui()
 
 
 def run() -> int:
