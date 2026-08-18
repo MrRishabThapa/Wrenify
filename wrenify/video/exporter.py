@@ -151,28 +151,33 @@ if __name__ == "__main__":
     console.print("\n[bold cyan]Video Export Test — 5 second recording[/bold cyan]\n")
     console.print("[yellow]Recording webcam + mic for 5 seconds...[/yellow]\n")
 
-    # Record webcam
-    cam = WebcamCapture()
-    cam.start()
+    try:
+        # Record webcam
+        cam = WebcamCapture()
+        cam.start()
 
-    # Record audio
-    duration = 5
-    sr = CONFIG.audio.sample_rate
-    audio = sd.rec(int(duration * sr), samplerate=sr, channels=1, dtype="float32")
+        # Record audio
+        duration = 5
+        sr = CONFIG.audio.sample_rate
+        audio = sd.rec(int(duration * sr), samplerate=sr, channels=1, dtype="float32")
 
-    time.sleep(duration)
-    sd.wait()
+        time.sleep(duration)
+        sd.wait()
 
-    cam.stop()
+        cam.stop()
 
-    frames = cam.drain_frames()
-    audio_flat = audio.flatten()
+        frames = cam.drain_frames()
+        audio_flat = audio.flatten()
 
-    console.print(f"[green]Captured {len(frames)} frames[/green]")
-    console.print(f"[green]Captured {len(audio_flat)} audio samples[/green]\n")
+        console.print(f"[green]Captured {len(frames)} frames[/green]")
+        console.print(f"[green]Captured {len(audio_flat)} audio samples[/green]\n")
 
-    # Export
-    exporter = VideoExporter()
-    output_path = exporter.export(frames, audio_flat, sr, "webcam_test")
+        # Export
+        exporter = VideoExporter()
+        output_path = exporter.export(frames, audio_flat, sr, "webcam_test")
 
-    console.print(f"\n[green]Play with:[/green] mpv {output_path}")
+        console.print(f"\n[green]Play with:[/green] mpv {output_path}")
+    except KeyboardInterrupt:
+        cam.stop()
+        console.print("\n[dim]Recording interrupted[/dim]")
+        exit(0)
