@@ -5,9 +5,9 @@ Single source of truth for all app settings.
 Import anywhere with:  from wrenify.core.config import CONFIG
 """
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
-import os
 
 from dotenv import load_dotenv
 
@@ -57,6 +57,10 @@ class VideoConfig:
     fps:          int  = 30
     width:        int  = 1280
     height:       int  = 720
+    codec:        str  = "libx264"
+    audio_codec:  str  = "aac"
+    preset:       str  = "fast"
+    export_format: str = "mp4"
 
 
 @dataclass

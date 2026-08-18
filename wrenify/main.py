@@ -109,6 +109,22 @@ def test_effects() -> None:
     console.print(f"[green]Saved:[/green] {out_path}")
 
 
+def test_webcam() -> None:
+    """Live webcam preview with FPS overlay."""
+    import subprocess
+
+    console.print("\n[cyan]Launching webcam preview...[/cyan]\n")
+    subprocess.run(["poetry", "run", "python", "-m", "wrenify.video.camera"])
+
+
+def test_video_export() -> None:
+    """Record 5 seconds of webcam + mic, export as MP4."""
+    import subprocess
+
+    console.print("\n[cyan]Recording webcam + mic for 5 seconds...[/cyan]\n")
+    subprocess.run(["poetry", "run", "python", "-m", "wrenify.video.exporter"])
+
+
 def launch_ui() -> None:
     """Launch the PyQt6 desktop interface."""
     from wrenify.ui.app import run
@@ -123,10 +139,11 @@ def main() -> None:
     console.print("  [cyan]1[/cyan] → Test microphone (5s level meter)")
     console.print("  [cyan]2[/cyan] → Auto-tune a WAV file")
     console.print("  [cyan]3[/cyan] → Apply effects to a WAV file")
-    console.print("  [cyan]4[/cyan] → Launch the desktop UI")
+    console.print("  [cyan]4[/cyan] → Test webcam (live preview)")
+    console.print("  [cyan]5[/cyan] → Test video export (webcam + mic → MP4)")
     console.print("  [cyan]q[/cyan] → Quit\n")
 
-    choice = Prompt.ask("→", choices=["1", "2", "3", "4", "q"], default="1")
+    choice = Prompt.ask("→", choices=["1", "2", "3", "4", "5", "q"], default="1")
 
     if choice == "1":
         test_mic()
@@ -135,7 +152,9 @@ def main() -> None:
     elif choice == "3":
         test_effects()
     elif choice == "4":
-        launch_ui()
+        test_webcam()
+    elif choice == "5":
+        test_video_export()
     else:
         console.print("[dim]Bye[/dim]")
         sys.exit(0)
