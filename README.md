@@ -41,20 +41,22 @@ Also — I've been writing JavaScript and TypeScript for years and wanted a
 real backend-heavy Python project to learn from. This checks every box:  
 real-time audio, DSP, threading, native UI, file I/O, video processing.
 
-## Planned Features
+## Features
 
-- 🎤 Real-time pitch correction using the WORLD vocoder
-- 📝 Time-synced lyrics with word-level highlighting
-- 🎨 Stylized display for held notes (e.g. `faaall-eeen  treeee`)
-- 📹 Webcam capture during performance
-- 🎬 Final export to MP4 with your corrected voice
-- 🎛️ Adjustable correction strength (natural → T-Pain)
-- 🎹 Key and scale selection (major, minor, pentatonic, blues)
-- 🐧 Runs on Linux, first-class support for Arch
+- [x] 🎤 Real-time pitch correction using the WORLD vocoder
+- [x] 📝 Time-synced lyrics with word-level highlighting
+- [x] 🎨 Stylized display for held notes (e.g. `faaall-eeen  treeee`)
+- [x] 📹 Webcam capture during performance
+- [x] 🎬 Final export to MP4 with your corrected voice
+- [x] 🎛️ Adjustable correction strength (natural → T-Pain)
+- [x] 🎹 Key and scale selection (major, minor, pentatonic, blues)
+- [x] 🏆 Live karaoke session with word matching and accuracy score
+- [x] 🐧 Runs on Linux, first-class support for Arch
 
 ## Current Status
 
-This project is in **early development**. Here is where I am at:
+The core pipeline is **complete and working end-to-end** — you can run
+a full karaoke session (webcam + lyrics overlay + live scoring) right now.
 
 | Module              | Status         |
 | ------------------- | -------------- |
@@ -66,10 +68,12 @@ This project is in **early development**. Here is where I am at:
 | MP4 export          | Done           |
 | Speech recognition  | Done           |
 | PyQt6 UI shell      | Done           |
-| Lyrics fetching     | In progress    |
-| Lyrics sync UI      | Planned        |
+| Lyrics fetching     | Done           |
+| Lyrics sync UI      | Done           |
+| Karaoke scoring     | Done           |
 | Song library        | Planned        |
-| End-to-end demo     | Planned        |
+| Effects rack panel  | Planned        |
+| Packaging / polish  | Planned        |
 
 Follow the commits to watch the project evolve.
 
@@ -174,6 +178,27 @@ python wrenify/audio/capture.py                # Test your mic
 python wrenify/audio/autotune.py my_voice.wav  # Auto-tune a WAV file
 ```
 
+### Karaoke mode
+
+From the CLI menu, pick **11** and give it a `.lrc` file
+(fetch one with menu option **9**, or grab a synced one from
+LRCLIB / Musixmatch). The karaoke view shows:
+
+- Your webcam as the background with lyric subtitles overlaid
+- Word colors: white = upcoming, yellow = now, green = sung correctly,
+  red = wrong or missed
+- A progress bar and a live correct/wrong/missed counter
+- A final results screen with your accuracy percentage and letter grade
+
+```bash
+# Fetch lyrics, save to exports/, then launch karaoke:
+poetry run python -m wrenify.lyrics.fetcher "Yellow" "Coldplay"
+poetry run wrenify        # → option 11 → exports/coldplay_yellow.lrc
+```
+
+No song playback yet — the timeline tracks time from when the session
+starts. Song audio playback is planned next.
+
 ## Project Structure
 
 ```
@@ -200,6 +225,12 @@ wrenify/
     │   ├── parser.py         # Parse LRC timestamps
     │   └── phonetic.py       # "fallen" → "faaall-eeen"
     │
+    ├── karaoke/
+    │   ├── session.py        # Session orchestrator (audio+speech+video)
+    │   ├── timeline.py       # Word state machine + master clock
+    │   ├── matcher.py        # Fuzzy word matching (Levenshtein)
+    │   └── scorer.py         # Accuracy % and letter grades
+    │
     ├── speech/
     │   └── recognizer.py     # faster-whisper offline STT
     │
@@ -209,6 +240,8 @@ wrenify/
     │
     ├── ui/
     │   ├── app.py            # PyQt6 main window
+    │   ├── karaoke_view.py   # Webcam + lyric overlay
+    │   ├── results_view.py   # Final score screen
     │   └── widgets.py        # Custom widgets
     │
     └── tests/
@@ -234,34 +267,35 @@ CONFIG.audio.chunk_size  = 4096
 
 ## Roadmap
 
-**Phase 1 — Foundation** *(current)*
+**Phase 1 — Foundation** *(done)*
 - [x] Project setup with Poetry
-- [ ] Real-time audio capture
-- [ ] WORLD vocoder auto-tune engine
-- [ ] CLI-based testing
+- [x] Real-time audio capture
+- [x] WORLD vocoder auto-tune engine
+- [x] CLI-based testing
 
-**Phase 2 — Lyrics**
-- [ ] Fetch synced .lrc lyrics
-- [ ] Parse and display in real-time
-- [ ] Phonetic stretching for held notes
+**Phase 2 — Lyrics** *(done)*
+- [x] Fetch synced .lrc lyrics
+- [x] Parse and display in real-time
+- [x] Phonetic stretching for held notes
 
-**Phase 3 — Speech alignment**
-- [ ] faster-whisper word recognition
-- [ ] Match spoken words to lyric positions
-- [ ] Highlight current word as you sing
+**Phase 3 — Speech alignment** *(done)*
+- [x] faster-whisper word recognition
+- [x] Match spoken words to lyric positions
+- [x] Highlight current word as you sing
 
 **Phase 4 — UI**
-- [ ] PyQt6 main window
+- [x] PyQt6 main window
 - [ ] Song search and library
-- [ ] Live karaoke view
+- [x] Live karaoke view
 - [ ] Effects rack panel
 
 **Phase 5 — Video export**
-- [ ] Webcam capture
+- [x] Webcam capture
 - [ ] Composite video with lyrics overlay
-- [ ] MP4 export via ffmpeg
+- [x] MP4 export via ffmpeg
 
-**Phase 6 — Polish**
+**Phase 6 — Polish** *(current)*
+- [ ] Song playback in karaoke mode
 - [ ] Preset library (voice presets)
 - [ ] Multi-track recording
 - [ ] AppImage / Flatpak packaging
