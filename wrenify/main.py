@@ -230,24 +230,23 @@ def launch_ui() -> None:
 
 
 def test_full_karaoke() -> None:
-    """Launch a full karaoke session (webcam + lyrics + scoring)."""
+    """Launch a full karaoke session (music + lyrics + scoring)."""
     from PyQt6.QtWidgets import QApplication
 
     from wrenify.ui.app import THEME_QSS, MainWindow
 
-    lrc_path_str = Prompt.ask("[cyan]Path to .lrc file[/cyan]")
-    lrc_path = Path(lrc_path_str).expanduser()
-
-    if not lrc_path.exists():
-        console.print(f"[red]File not found:[/red] {lrc_path}")
-        return
+    console.print("\n[cyan]Launching Wrenify karaoke...[/cyan]")
+    console.print("[yellow]You will be asked for:[/yellow]")
+    console.print("  1. Instrumental audio file (mp3/wav)")
+    console.print("  2. Lyrics file (.lrc)")
+    console.print("\n[bold]HEADPHONES RECOMMENDED[/bold] to avoid mic feedback.\n")
 
     app = QApplication(sys.argv)
     app.setApplicationName("Wrenify")
     app.setStyleSheet(THEME_QSS)
     window = MainWindow()
-    window.launch_karaoke(lrc_path)
     window.show()
+    window.open_song_dialog()
     sys.exit(app.exec())
 
 
