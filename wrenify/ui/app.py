@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from loguru import logger
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
@@ -19,8 +20,9 @@ from PyQt6.QtWidgets import (
 from wrenify.core.config import CONFIG
 from wrenify.karaoke.scorer import ScoreReport
 from wrenify.karaoke.session import KaraokeSession
-from wrenify.lyrics.parser import LRCParser
+from wrenify.songs.song import Song
 from wrenify.ui.karaoke_view import KaraokeView
+from wrenify.ui.pre_karaoke_view import PreKaraokeView
 from wrenify.ui.results_view import ResultsView
 from wrenify.ui.widgets import (
     LOGO_PATH,
@@ -173,7 +175,8 @@ class MainWindow(QMainWindow):
         self.session: Optional[KaraokeSession] = None
         self.karaoke_view: Optional[KaraokeView] = None
         self.results_view: Optional[ResultsView] = None
-        self._last_lrc: Optional[Path] = None
+        self._pre_view: Optional[PreKaraokeView] = None
+        self._pending_song: Optional[Song] = None
         self._status_labels: list[QLabel] = []
 
         self._build_main_ui()
@@ -308,15 +311,108 @@ class MainWindow(QMainWindow):
             self._status_labels.append(label)
 
     def launch_karaoke(self, lrc_path: Path) -> None:
-        """Start a karaoke session with the given .lrc file."""
-        parser = LRCParser()
-        lyrics = parser.parse_file(lrc_path)
+        """
+        DEPRECATED: start karaoke from an .lrc file.
 
-        self._last_lrc = lrc_path
-        self.session = KaraokeSession(lyrics, parent=self)
+        Prompts for an instrumental to pair with the lyrics, then
+        continues through the normal song flow. Prefer
+        open_song_dialog() or launch_karaoke_with_song().
+        """
+        from PyQt6.QtWidgets import QFileDialog
+
+        from wrenify.songs.song import Song
+
+        logger.warning(
+            "launch_karaoke(lrc_path) is deprecated — "
+            "use open_song_dialog() or launch_karaoke_with_song()"
+        )
+
+        instrumental_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Instrumental for this LRC",
+            str(lrc_path.parent),
+            "Audio Files (*.mp3 *.wav *.ogg *.flac)",
+        )
+        if not instrumental_path:
+            return
+
+        song = Song.from_files(
+            instrumental=Path(instrumental_path),
+            lyrics=lrc_path,
+        )
+        self.launch_karaoke_with_song(song)
+
+    def open_song_dialog(self) -> None:
+        """Show file pickers to select instrumental + lyrics, then pre-view."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+
+        from wrenify.songs.song import Song
+
+        # Ask for instrumental
+        instrumental_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Instrumental Audio",
+            str(Path.home()),
+            "Audio Files (*.mp3 *.wav *.ogg *.flac)",
+        )
+        if not instrumental_path:
+            return
+
+        # Ask for lyrics
+        lyrics_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Lyrics File",
+            str(Path(instrumental_path).parent),
+            "LRC Files (*.lrc)",
+        )
+        if not lyrics_path:
+            return
+
+        # Guess title/artist from the instrumental filename
+        stem = Path(instrumental_path).stem
+        parts = stem.replace("_", " ").replace("-", " ").split()
+        title = " ".join(parts).title() if parts else "Unknown"
+
+        song = Song.from_files(
+            instrumental=Path(instrumental_path),
+            lyrics=Path(lyrics_path),
+            title=title,
+            artist="Unknown",
+        )
+
+        # Headphone reminder
+        reply = QMessageBox.question(
+            self,
+            "Headphones Recommended",
+            (
+                "For best results, please wear HEADPHONES.\n\n"
+                "Otherwise your mic will pick up the song audio "
+                "and confuse the speech recognition.\n\n"
+                "Continue?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self.launch_karaoke_with_song(song)
+
+    def launch_karaoke_with_song(self, song: Song) -> None:
+        """Show the ready screen for a fully-loaded Song."""
+        self._pending_song = song
+        self._pre_view = PreKaraokeView(song)
+        self._pre_view.ready_signal.connect(self._start_karaoke_session)
+        self._pre_view.cancel_signal.connect(self._back_to_menu)
+        self.setCentralWidget(self._pre_view)
+
+    def _start_karaoke_session(self) -> None:
+        """Called after the user confirms ready (gesture or countdown)."""
+        if self._pending_song is None:
+            return
+
+        self.session = KaraokeSession(self._pending_song, parent=self)
         self.karaoke_view = KaraokeView(self.session)
         self.session.finished_signal.connect(self._show_results)
-
         self.setCentralWidget(self.karaoke_view)
         self.session.start()
 
@@ -328,8 +424,9 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.results_view)
 
     def _retry(self) -> None:
-        if self._last_lrc is not None:
-            self.launch_karaoke(self._last_lrc)
+        """Sing the same song again, straight into the karaoke view."""
+        if self._pending_song is not None:
+            self._start_karaoke_session()
 
     def _back_to_menu(self) -> None:
         """Restore the main navigation UI after a karaoke session."""
