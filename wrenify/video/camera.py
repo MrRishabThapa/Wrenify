@@ -50,8 +50,13 @@ class WebcamCapture:
                     cv2.imshow("Preview", frame.image)
     """
 
-    def __init__(self, max_buffer_frames: int = 900) -> None:
-        # 900 frames = 30 seconds at 30 fps
+    def __init__(self, max_buffer_frames: int = 300) -> None:
+        """
+        Args:
+            max_buffer_frames: Max frames in memory. Default 300 =
+                               ~12 seconds at 24fps. Tuned for 8GB RAM.
+                               Bump to 900+ on 16GB systems.
+        """
         self.cfg = CONFIG.video
         self.frames: deque[Frame] = deque(maxlen=max_buffer_frames)
         self._cap: Optional[cv2.VideoCapture] = None
