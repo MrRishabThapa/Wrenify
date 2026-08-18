@@ -114,7 +114,10 @@ def test_webcam() -> None:
     import subprocess
 
     console.print("\n[cyan]Launching webcam preview...[/cyan]\n")
-    subprocess.run(["poetry", "run", "python", "-m", "wrenify.video.camera"])
+    try:
+        subprocess.run(["poetry", "run", "python", "-m", "wrenify.video.camera"])
+    except KeyboardInterrupt:
+        console.print("[dim]Webcam preview interrupted[/dim]")
 
 
 def test_video_export() -> None:
@@ -122,7 +125,10 @@ def test_video_export() -> None:
     import subprocess
 
     console.print("\n[cyan]Recording webcam + mic for 5 seconds...[/cyan]\n")
-    subprocess.run(["poetry", "run", "python", "-m", "wrenify.video.exporter"])
+    try:
+        subprocess.run(["poetry", "run", "python", "-m", "wrenify.video.exporter"])
+    except KeyboardInterrupt:
+        console.print("[dim]Video export interrupted[/dim]")
 
 
 def launch_ui() -> None:
