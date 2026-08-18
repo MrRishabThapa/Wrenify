@@ -179,6 +179,34 @@ def test_speech_streaming() -> None:
     ])
 
 
+def test_lyrics_parser() -> None:
+    """Parse an LRC file and display structured output."""
+    import subprocess
+
+    from rich.prompt import Prompt
+
+    path = Prompt.ask(
+        "[cyan]Path to .lrc file (blank for sample)[/cyan]",
+        default="",
+    )
+    args = ["poetry", "run", "python", "-m", "wrenify.lyrics.parser"]
+    if path:
+        args.append(path)
+    subprocess.run(args)
+
+
+def test_lyrics_fetcher() -> None:
+    """Fetch lyrics from online sources."""
+    import subprocess
+    subprocess.run(["poetry", "run", "python", "-m", "wrenify.lyrics.fetcher"])
+
+
+def test_phonetic_stylizer() -> None:
+    """Demonstrate word stretching for held notes."""
+    import subprocess
+    subprocess.run(["poetry", "run", "python", "-m", "wrenify.lyrics.phonetic"])
+
+
 def launch_ui() -> None:
     """Launch the PyQt6 desktop interface."""
     from wrenify.ui.app import run
@@ -198,11 +226,14 @@ def main() -> None:
     console.print("  [cyan]5[/cyan] → Test video export (webcam + mic → MP4)")
     console.print("  [cyan]6[/cyan] → Speech-to-text on WAV file (batch)")
     console.print("  [cyan]7[/cyan] → Live speech recognition (streaming)")
+    console.print("  [cyan]8[/cyan] → Parse an LRC lyrics file")
+    console.print("  [cyan]9[/cyan] → Fetch lyrics from online")
+    console.print("  [cyan]10[/cyan] → Test phonetic word stretcher")
     console.print("  [cyan]q[/cyan] → Quit\n")
 
     choice = Prompt.ask(
         "→",
-        choices=["1", "2", "3", "4", "5", "6", "7", "q"],
+        choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "q"],
         default="1",
     )
 
@@ -220,6 +251,12 @@ def main() -> None:
         test_speech_batch()
     elif choice == "7":
         test_speech_streaming()
+    elif choice == "8":
+        test_lyrics_parser()
+    elif choice == "9":
+        test_lyrics_fetcher()
+    elif choice == "10":
+        test_phonetic_stylizer()
     else:
         console.print("[dim]Bye[/dim]")
         sys.exit(0)
