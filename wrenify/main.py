@@ -13,17 +13,32 @@ import time
 from pathlib import Path
 
 import numpy as np
+from loguru import logger
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.text import Text
 
-from wrenify.core.config import CONFIG
+from wrenify.core.config import ASSETS_DIR, CONFIG
 
 console = Console()
 
+BANNER_PATH = ASSETS_DIR / "banner.txt"
+
+
+def _load_banner() -> str:
+    """Load the dot-map logo banner from disk (empty string if missing)."""
+    try:
+        return BANNER_PATH.read_text(encoding="utf-8").rstrip("\n")
+    except OSError:
+        logger.warning(f"Banner file not found: {BANNER_PATH}")
+        return ""
+
 
 def print_banner() -> None:
+    banner = _load_banner()
+    if banner:
+        console.print(f"[bold magenta]{banner}[/bold magenta]")
     text = Text()
     text.append("WRENIFY", style="bold magenta")
     text.append(" v0.1.0\n", style="dim")
