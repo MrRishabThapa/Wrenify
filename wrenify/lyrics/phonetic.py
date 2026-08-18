@@ -21,6 +21,8 @@ from typing import Optional
 
 from loguru import logger
 
+from wrenify.lyrics.parser import ParsedLyrics
+
 try:
     import pronouncing
     CMU_AVAILABLE = True
@@ -120,6 +122,69 @@ class PhoneticStylizer:
         ]
         return "  ".join(stylized)  # Double-space for breathing room
 
+    def stylize_line_at(
+        self,
+        lyrics: ParsedLyrics,
+        time_sec: float,
+    ) -> Optional[str]:
+        """
+        Stylize the lyric line being sung at a given time.
+
+        Word durations come from:
+        - Extended LRC word tags when present (exact per-word timing)
+        - Syllable-weighted distribution of the line duration otherwise
+          (longer words get more stretch, matching how people sing)
+
+        Args:
+            lyrics: Parsed lyrics (from LRCParser)
+            time_sec: Current playback position in seconds
+
+        Returns:
+            Stylized line, or None if no lyric line is active
+        """
+        line = lyrics.line_at(time_sec)
+        if line is None or not line.text:
+            return None
+
+        if line.has_word_timing:
+            words = [w.text for w in line.words]
+            durations = [
+                max(0.0, (w.end or 0.0) - w.start)
+                for w in line.words
+            ]
+            return self.stylize_line(words, durations)
+
+        line_duration = line.duration or 0.0
+        words = line.text.split()
+        if line_duration <= 0.0:
+            return " ".join(words)
+
+        durations = self._split_line_durations(words, line_duration)
+        return self.stylize_line(words, durations)
+
+    def _split_line_durations(
+        self,
+        words: list[str],
+        line_duration: float,
+    ) -> list[float]:
+        """Distribute a line's duration across words by syllable count."""
+        if not words:
+            return []
+
+        if CMU_AVAILABLE:
+            syllable_counts = [
+                max(1, pronouncing.syllable_count(w.lower()))
+                for w in words
+            ]
+            total = sum(syllable_counts)
+            return [
+                line_duration * (count / total)
+                for count in syllable_counts
+            ]
+
+        # No CMU dict: equal split
+        return [line_duration / len(words)] * len(words)
+
     def _stretch_phonetic(self, word: str, repeats: int) -> Optional[str]:
         """Stretch based on CMU dict phonemes. Returns None if word not found."""
         phones_list = pronouncing.phones_for_word(word.lower())
@@ -174,8 +239,13 @@ class PhoneticStylizer:
 # ────────────────────── Standalone test ──────────────────────
 
 if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+
     from rich.console import Console
     from rich.table import Table
+
+    from wrenify.lyrics.parser import LRCParser
 
     console = Console()
     console.print("\n[bold cyan]Phonetic Stylizer Test[/bold cyan]\n")
@@ -187,6 +257,64 @@ if __name__ == "__main__":
         console.print("[dim]Install with: poetry add pronouncing[/dim]\n")
 
     stylizer = PhoneticStylizer()
+
+    # ── Real lyrics mode: python -m wrenify.lyrics.phonetic song.lrc [--time N]
+    args = sys.argv[1:]
+    time_flag = None
+    lrc_path = None
+    if "--time" in args:
+        idx = args.index("--time")
+        try:
+            time_flag = float(args[idx + 1])
+        except (IndexError, ValueError):
+            console.print("[red]--time needs a number, e.g. --time 42.5[/red]")
+            sys.exit(1)
+        del args[idx : idx + 2]
+    if args:
+        lrc_path = Path(args[0])
+
+    if lrc_path is not None:
+        if not lrc_path.exists():
+            console.print(f"[red]File not found:[/red] {lrc_path}")
+            sys.exit(1)
+
+        console.print(f"[cyan]Parsing:[/cyan] {lrc_path}\n")
+        lyrics = LRCParser().parse_file(lrc_path)
+
+        if time_flag is not None:
+            result = stylizer.stylize_line_at(lyrics, time_flag)
+            if result is None:
+                console.print(f"[yellow]No lyrics at t={time_flag:.1f}s[/yellow]")
+            else:
+                console.print(f"  t={time_flag:.1f}s  [green]{result}[/green]")
+            sys.exit(0)
+
+        table = Table(title=f"Stretched Lyrics — {lrc_path.name}")
+        table.add_column("#",      justify="right", style="dim")
+        table.add_column("Start",  justify="right", style="cyan")
+        table.add_column("Duration", justify="right", style="yellow")
+        table.add_column("Original", style="white")
+        table.add_column("Stylized", style="green")
+
+        for i, line in enumerate(lyrics.lines):
+            if not line.text:
+                continue
+            dur = line.duration
+            dur_str = f"{dur:.1f}s" if dur is not None else "-"
+            result = stylizer.stylize_line_at(lyrics, line.start)
+            table.add_row(
+                str(i + 1),
+                f"{line.start:.2f}s",
+                dur_str,
+                line.text,
+                result or "[dim](none)[/dim]",
+            )
+
+        console.print(table)
+        sys.exit(0)
+
+    # ── Demo mode: built-in test cases
+    console.print("[yellow]No LRC file given, using built-in demo[/yellow]\n")
 
     # Test cases: (word, duration in seconds)
     test_cases: list[tuple[str, float]] = [
