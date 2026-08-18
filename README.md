@@ -180,24 +180,32 @@ python wrenify/audio/autotune.py my_voice.wav  # Auto-tune a WAV file
 
 ### Karaoke mode
 
-From the CLI menu, pick **11** and give it a `.lrc` file
-(fetch one with menu option **9**, or grab a synced one from
-LRCLIB / Musixmatch). The karaoke view shows:
+From the CLI menu, pick **11** and a file dialog asks for your
+instrumental (mp3/wav) and its synced `.lrc` lyrics (fetch one with
+menu option **9**). The ready screen shows a live webcam preview —
+raise an open palm then close it into a fist (or press **I'm Ready**)
+to start the 3-2-1 countdown. Then:
 
-- Your webcam as the background with lyric subtitles overlaid
+- Your instrumental plays through the speakers while the webcam
+  shows behind lyric subtitles, highlighted in sync with the audio
 - Word colors: white = upcoming, yellow = now, green = sung correctly,
   red = wrong or missed
 - A progress bar and a live correct/wrong/missed counter
-- A final results screen with your accuracy percentage and letter grade
+- Pause/resume keeps the music and lyrics in sync
+- The session ends when the song finishes, showing your accuracy
+  percentage and letter grade
+
+**Wear headphones** — otherwise the mic picks up the song audio and
+confuses the speech recognition, wrecking your score.
 
 ```bash
 # Fetch lyrics, save to exports/, then launch karaoke:
 poetry run python -m wrenify.lyrics.fetcher "Yellow" "Coldplay"
-poetry run wrenify        # → option 11 → exports/coldplay_yellow.lrc
+poetry run wrenify        # → option 11 → pick instrumental + the .lrc
 ```
 
-No song playback yet — the timeline tracks time from when the session
-starts. Song audio playback is planned next.
+Songs can also live in a folder: `instrumental.mp3` + `lyrics.lrc`
+(+ optional `meta.json`, `cover.jpg`) — see `Song.from_folder()`.
 
 ## Project Structure
 
@@ -218,7 +226,11 @@ wrenify/
     ├── audio/
     │   ├── capture.py        # Real-time mic input
     │   ├── autotune.py       # WORLD vocoder pitch correction
+    │   ├── player.py         # Instrumental playback + position tracking
     │   └── effects.py        # Reverb, compression, EQ
+    │
+    ├── songs/
+    │   └── song.py           # Instrumental + lyrics pairing
     │
     ├── lyrics/
     │   ├── fetcher.py        # Fetch synced .lrc lyrics
@@ -240,6 +252,7 @@ wrenify/
     │
     ├── ui/
     │   ├── app.py            # PyQt6 main window
+    │   ├── pre_karaoke_view.py # Ready screen (gesture + countdown)
     │   ├── karaoke_view.py   # Webcam + lyric overlay
     │   ├── results_view.py   # Final score screen
     │   └── widgets.py        # Custom widgets
@@ -295,7 +308,7 @@ CONFIG.audio.chunk_size  = 4096
 - [x] MP4 export via ffmpeg
 
 **Phase 6 — Polish** *(current)*
-- [ ] Song playback in karaoke mode
+- [x] Song playback in karaoke mode
 - [ ] Preset library (voice presets)
 - [ ] Multi-track recording
 - [ ] AppImage / Flatpak packaging
