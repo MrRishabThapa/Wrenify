@@ -30,7 +30,6 @@ syncedlyrics = "^0.7.0"
 lyricsgenius = "^3.0.1"
 
 # Speech recognition (offline)
-vosk = "^0.3.45"
 
 # Video / webcam
 opencv-python = "^4.8.0"
@@ -42,6 +41,8 @@ python-dotenv = "^1.0.0"
 rich = "^13.6.0"
 loguru = "^0.7.2"
 setuptools = "<81"
+faster-whisper = "^1.2.1"
+psutil = "^7.2.2"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.1.0"
