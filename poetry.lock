@@ -475,6 +475,22 @@ files = [
 colorama = {version = "*", markers = "platform_system == \"Windows\""}
 
 [[package]]
+name = "cmudict"
+version = "1.1.3"
+description = "A versioned python wrapper package for The CMU Pronouncing Dictionary data files."
+optional = false
+python-versions = "<4.0,>=3.9"
+groups = ["main"]
+files = [
+    {file = "cmudict-1.1.3-py3-none-any.whl", hash = "sha256:e4d421341bf9fa774bcded8e7d6c5d73a1bf8f88edbe129207713850abac4995"},
+    {file = "cmudict-1.1.3.tar.gz", hash = "sha256:f6c1cb9a2ffecef387bf1a1b93be6c61c91bc6f41714f183c3eb4d5b3e1ff5f6"},
+]
+
+[package.dependencies]
+importlib-metadata = ">=5"
+importlib-resources = ">=5"
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 description = "Cross-platform colored terminal text."
@@ -826,6 +842,50 @@ files = [
     {file = "imageio_ffmpeg-0.6.0-py3-none-win_amd64.whl", hash = "sha256:02fa47c83703c37df6bfe4896aab339013f62bf02c5ebf2dce6da56af04ffc0a"},
     {file = "imageio_ffmpeg-0.6.0.tar.gz", hash = "sha256:e2556bed8e005564a9f925bb7afa4002d82770d6b08825078b7697ab88ba1755"},
 ]
+
+[[package]]
+name = "importlib-metadata"
+version = "9.0.0"
+description = "Read metadata from Python packages"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "importlib_metadata-9.0.0-py3-none-any.whl", hash = "sha256:2d21d1cc5a017bd0559e36150c21c830ab1dc304dedd1b7ea85d20f45ef3edd7"},
+    {file = "importlib_metadata-9.0.0.tar.gz", hash = "sha256:a4f57ab599e6a2e3016d7595cfd72eb4661a5106e787a95bcc90c7105b831efc"},
+]
+
+[package.dependencies]
+zipp = ">=3.20"
+
+[package.extras]
+check = ["pytest-checkdocs (>=2.14)", "pytest-ruff (>=0.2.1) ; sys_platform != \"cygwin\""]
+cover = ["pytest-cov"]
+doc = ["furo", "jaraco.packaging (>=9.3)", "jaraco.tidelift (>=1.4)", "rst.linker (>=1.9)", "sphinx (>=3.5)", "sphinx-lint"]
+enabler = ["pytest-enabler (>=3.4)"]
+perf = ["ipython"]
+test = ["packaging", "pyfakefs", "pytest (>=6,!=8.1.*)", "pytest-perf (>=0.9.2)"]
+type = ["pytest-mypy (>=1.0.1) ; platform_python_implementation != \"PyPy\""]
+
+[[package]]
+name = "importlib-resources"
+version = "7.1.0"
+description = "Read resources from Python packages"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "importlib_resources-7.1.0-py3-none-any.whl", hash = "sha256:1bd7b48b4088eddb2cd16382150bb515af0bd2c70128194392725f82ad2c96a1"},
+    {file = "importlib_resources-7.1.0.tar.gz", hash = "sha256:0722d4c6212489c530f2a145a34c0a7a3b4721bc96a15fada5930e2a0b760708"},
+]
+
+[package.extras]
+check = ["pytest-checkdocs (>=2.14)", "pytest-ruff (>=0.2.1) ; sys_platform != \"cygwin\""]
+cover = ["pytest-cov"]
+doc = ["furo", "jaraco.packaging (>=9.3)", "jaraco.tidelift (>=1.4)", "rst.linker (>=1.9)", "sphinx (>=3.5)", "sphinx-lint"]
+enabler = ["pytest-enabler (>=3.4)"]
+test = ["jaraco.test (>=5.4)", "pytest (>=6,!=8.1.*)", "zipp (>=3.17)"]
+type = ["pytest-mypy (>=1.0.1) ; platform_python_implementation != \"PyPy\""]
 
 [[package]]
 name = "iniconfig"
@@ -1538,6 +1598,21 @@ files = [
 
 [package.dependencies]
 tqdm = "*"
+
+[[package]]
+name = "pronouncing"
+version = "0.3.0"
+description = "A simple interface for the CMU pronouncing dictionary"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "pronouncing-0.3.0-py3-none-any.whl", hash = "sha256:347bd30f00e28048474b99a8f1fc2e80f845dabdd7f3dce9d03c84f02c710f04"},
+    {file = "pronouncing-0.3.0.tar.gz", hash = "sha256:349664045d059f44032e5fda626210490b1808e4969194a958dd205c526e978a"},
+]
+
+[package.dependencies]
+cmudict = ">=0.4.0"
 
 [[package]]
 name = "protobuf"
@@ -2457,7 +2532,27 @@ files = [
 [package.extras]
 dev = ["black (>=19.3b0) ; python_version >= \"3.6\"", "pytest (>=4.6.2)"]
 
+[[package]]
+name = "zipp"
+version = "4.1.0"
+description = "Backport of pathlib-compatible object wrapper for zip files"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "zipp-4.1.0-py3-none-any.whl", hash = "sha256:25ad4e16390cd314347dd8f1de67a2ac538ae658ed4ab9db16029c07c188e97f"},
+    {file = "zipp-4.1.0.tar.gz", hash = "sha256:4cb57381f544315db7688e976e922a2b18cdb513d21cc194eb42232ba2a3e602"},
+]
+
+[package.extras]
+check = ["pytest-checkdocs (>=2.14)", "pytest-ruff (>=0.2.1) ; sys_platform != \"cygwin\""]
+cover = ["pytest-cov"]
+doc = ["furo", "jaraco.packaging (>=9.3)", "jaraco.tidelift (>=1.4)", "rst.linker (>=1.9)", "sphinx (>=3.5)", "sphinx-lint"]
+enabler = ["pytest-enabler (>=3.4)"]
+test = ["big-O", "jaraco.functools", "jaraco.itertools", "jaraco.test", "more_itertools", "pytest (>=6,!=8.1.*)", "pytest-ignore-flaky"]
+type = ["pytest-mypy (>=1.0.1) ; platform_python_implementation != \"PyPy\""]
+
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "73d7cab42c97d2a928b4d8f22597a30621f44336f7036f423e0f452a18cd26c4"
+content-hash = "88b7b4250f368b94a8e71c7fe78079d1376720dcadc86886479d1e56eb79c14d"
