@@ -36,7 +36,9 @@ class AudioCapture:
 
     def __init__(self) -> None:
         self.cfg = CONFIG.audio
-        self.audio_queue: queue.Queue[np.ndarray] = queue.Queue(maxsize=50)
+        self.audio_queue: queue.Queue[np.ndarray] = queue.Queue(
+            maxsize=CONFIG.audio.max_queue_size
+        )
         self._stream: Optional[sd.InputStream] = None
         self._running: bool = False
 
