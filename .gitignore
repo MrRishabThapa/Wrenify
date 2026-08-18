@@ -54,3 +54,6 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# syncedlyrics cache
+.syncedlyrics/
