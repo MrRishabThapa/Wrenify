@@ -139,6 +139,60 @@ class AutoTuneEngine:
 
     # ─────────── Runtime setters ───────────
 
+    def process_full(
+        self,
+        audio: np.ndarray,
+        sample_rate: int,
+    ) -> np.ndarray:
+        """
+        Process an entire audio array through auto-tune.
+
+        Splits into chunks internally, processes each, concatenates result.
+
+        Args:
+            audio: Mono float32 audio samples
+            sample_rate: Sample rate (must match self.sr)
+
+        Returns:
+            Auto-tuned audio, same length as input
+        """
+        if not self.cfg.enabled or len(audio) == 0:
+            return audio
+
+        target_length = len(audio)
+
+        if sample_rate != self.sr:
+            import librosa
+
+            audio = librosa.resample(
+                audio, orig_sr=sample_rate, target_sr=self.sr
+            )
+
+        chunk_size = 4096
+        output_chunks: list[np.ndarray] = []
+
+        for i in range(0, len(audio), chunk_size):
+            chunk = audio[i : i + chunk_size]
+            if len(chunk) > 0:
+                processed = self.process(chunk)
+                output_chunks.append(processed)
+
+        if not output_chunks:
+            return audio
+
+        result = np.concatenate(output_chunks)
+
+        # Trim/pad to match the original input length exactly
+        if len(result) > target_length:
+            result = result[:target_length]
+        elif len(result) < target_length:
+            padding = np.zeros(
+                target_length - len(result), dtype=result.dtype
+            )
+            result = np.concatenate([result, padding])
+
+        return result
+
     def set_strength(self, strength: float) -> None:
         self.cfg.strength = float(np.clip(strength, 0.0, 1.0))
         logger.info(f"Strength → {self.cfg.strength}")
