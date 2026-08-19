@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -19,9 +19,11 @@ class Recording:
     duration_sec:  float
 
     # Files
-    folder:         Path
-    audio_path:     Path
-    video_path:     Optional[Path] = None  # None if no webcam frames
+    folder:              Path
+    audio_path:          Path
+    autotuned_path:      Optional[Path] = None  # Pitch-corrected audio
+    video_path:          Optional[Path] = None  # None if no webcam frames
+    autotuned_video_path: Optional[Path] = None  # Webcam + autotuned audio
 
     # Score data
     grade:         str = "F"
@@ -48,18 +50,64 @@ class Recording:
     def has_video(self) -> bool:
         return self.video_path is not None and self.video_path.exists()
 
+    @property
+    def has_autotuned(self) -> bool:
+        return self.autotuned_path is not None and self.autotuned_path.exists()
+
+    @property
+    def has_autotuned_video(self) -> bool:
+        return (
+            self.autotuned_video_path is not None
+            and self.autotuned_video_path.exists()
+        )
+
     def to_dict(self) -> dict:
-        d = asdict(self)
-        d['folder'] = str(self.folder)
-        d['audio_path'] = str(self.audio_path)
-        d['video_path'] = str(self.video_path) if self.video_path else None
-        d['recorded_at'] = self.recorded_at.isoformat()
-        return d
+        return {
+            "id":                  self.id,
+            "song_title":          self.song_title,
+            "song_artist":         self.song_artist,
+            "recorded_at":         self.recorded_at.isoformat(),
+            "duration_sec":        self.duration_sec,
+            "folder":              str(self.folder),
+            "audio_path":          str(self.audio_path),
+            "autotuned_path":      str(self.autotuned_path) if self.autotuned_path else None,
+            "video_path":          str(self.video_path) if self.video_path else None,
+            "autotuned_video_path": str(self.autotuned_video_path) if self.autotuned_video_path else None,
+            "grade":               self.grade,
+            "score_pct":           self.score_pct,
+            "correct_count":       self.correct_count,
+            "wrong_count":         self.wrong_count,
+            "missed_count":        self.missed_count,
+            "total_words":         self.total_words,
+        }
 
     @classmethod
     def from_dict(cls, data: dict) -> "Recording":
-        data['folder'] = Path(data['folder'])
-        data['audio_path'] = Path(data['audio_path'])
-        data['video_path'] = Path(data['video_path']) if data.get('video_path') else None
-        data['recorded_at'] = datetime.fromisoformat(data['recorded_at'])
-        return cls(**data)
+        return cls(
+            id=data["id"],
+            song_title=data["song_title"],
+            song_artist=data["song_artist"],
+            recorded_at=datetime.fromisoformat(data["recorded_at"]),
+            duration_sec=data["duration_sec"],
+            folder=Path(data["folder"]),
+            audio_path=Path(data["audio_path"]),
+            autotuned_path=(
+                Path(data["autotuned_path"])
+                if data.get("autotuned_path")
+                else None
+            ),
+            video_path=(
+                Path(data["video_path"]) if data.get("video_path") else None
+            ),
+            autotuned_video_path=(
+                Path(data["autotuned_video_path"])
+                if data.get("autotuned_video_path")
+                else None
+            ),
+            grade=data.get("grade", "F"),
+            score_pct=data.get("score_pct", 0.0),
+            correct_count=data.get("correct_count", 0),
+            wrong_count=data.get("wrong_count", 0),
+            missed_count=data.get("missed_count", 0),
+            total_words=data.get("total_words", 0),
+        )
