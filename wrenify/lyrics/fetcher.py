@@ -113,6 +113,45 @@ class LyricsFetcher:
             query=query,
         )
 
+    def fetch_plain_lyrics(
+        self,
+        title: str,
+        artist: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Fetch plain lyrics text (no timestamps) from lyrics providers.
+
+        Prefers sources that give clean, well-punctuated text.
+        Returns None if nothing was found.
+        """
+        result = self.search(title, artist, prefer_synced=False)
+        content = result.lrc_content or result.plain_text
+        if not content:
+            return None
+
+        cleaned = self._strip_timestamps(content)
+        if not cleaned:
+            logger.warning(f"Lyrics for {title} stripped to nothing")
+            return None
+
+        logger.success(f"Got plain lyrics ({len(cleaned)} chars)")
+        return cleaned
+
+    @staticmethod
+    def _strip_timestamps(text: str) -> str:
+        """Remove [mm:ss.xx] timestamps and metadata tags from LRC text."""
+        import re
+
+        # Remove line-level timestamps
+        text = re.sub(r"\[\d{2}:\d{2}\.\d{2,3}\]", "", text)
+        # Remove word-level timestamps
+        text = re.sub(r"<\d{2}:\d{2}\.\d{2,3}>", "", text)
+        # Remove metadata tags
+        text = re.sub(r"\[(ti|ar|al|by|length|offset|re|ve):[^\]]*\]", "", text)
+        # Clean up extra whitespace
+        lines = [line.strip() for line in text.split("\n") if line.strip()]
+        return "\n".join(lines)
+
     def save_to_file(
         self,
         result: LyricsSearchResult,
