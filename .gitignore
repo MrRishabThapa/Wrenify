@@ -37,6 +37,7 @@ recordings/
 .pytest_cache/
 .coverage
 htmlcov/
+.gitignore
 
 # IDE
 .vscode/
@@ -57,3 +58,4 @@ logs/
 
 # syncedlyrics cache
 .syncedlyrics/
+AGENTS.md
