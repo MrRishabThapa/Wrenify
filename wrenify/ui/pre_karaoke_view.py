@@ -91,7 +91,7 @@ class PreKaraokeView(QWidget):
         self._current_bbox: Optional[tuple[int, int, int, int]] = None
         self._last_bbox: Optional[tuple[int, int, int, int]] = None
         self._current_gesture = HandGesture.NONE
-        self._skin_ratio: float = 0.0
+        self._gesture_confidence: float = 0.0
         self._frame_width: int = 0
         self._frame_height: int = 0
         self._current_pixmap: Optional[QPixmap] = None
@@ -412,7 +412,7 @@ class PreKaraokeView(QWidget):
         text = (
             f"state={self._state.value} | "
             f"gesture={self._current_gesture.value} | "
-            f"skin={self._skin_ratio:.2f}"
+            f"conf={self._gesture_confidence:.2f}"
         )
         painter.setFont(QFont("Inter", 12))
         painter.setPen(QColor(255, 255, 255, 160))
@@ -527,7 +527,7 @@ class PreKaraokeView(QWidget):
 
         result = self.gesture_detector.detect(frame)
         self._current_gesture = result.gesture
-        self._skin_ratio = result.skin_ratio
+        self._gesture_confidence = result.confidence
         if result.bounding_box is not None:
             self._current_bbox = result.bounding_box
             self._last_bbox = result.bounding_box
@@ -571,11 +571,14 @@ class PreKaraokeView(QWidget):
                 logger.info("Open palm confirmed")
 
         elif self._state == PreKaraokeState.PALM_OPEN:
-            if gesture != HandGesture.OPEN_PALM and hold_confirmed:
-                # Skin blob shrank — hand closed into a fist
+            if gesture == HandGesture.CLOSED_FIST and hold_confirmed:
                 self._state = PreKaraokeState.FIST_CLOSED
                 logger.info("Fist confirmed, starting countdown")
                 self._begin_countdown()
+            elif gesture == HandGesture.NONE and hold_confirmed:
+                # Hand dropped entirely — back to scanning
+                self._state = PreKaraokeState.HAND_SEEN
+                logger.info("Hand lost during palm, back to HAND_SEEN")
 
         elif self._state == PreKaraokeState.FIST_CLOSED:
             self._state = PreKaraokeState.COUNTDOWN
