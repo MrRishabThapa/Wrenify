@@ -13,6 +13,18 @@ files = [
 ]
 
 [[package]]
+name = "antlr4-python3-runtime"
+version = "4.9.3"
+description = "ANTLR 4.9.3 runtime for Python 3.7"
+optional = false
+python-versions = "*"
+groups = ["main"]
+markers = "sys_platform == \"darwin\" and platform_machine == \"x86_64\""
+files = [
+    {file = "antlr4-python3-runtime-4.9.3.tar.gz", hash = "sha256:f224469b4168294902bb1efa80a8bf7855f24c99aef99cbefc1bcd3cce77881b"},
+]
+
+[[package]]
 name = "anyio"
 version = "4.14.2"
 description = "High-level concurrency and networking framework on top of asyncio or Trio"
@@ -499,6 +511,19 @@ files = [
 colorama = {version = "*", markers = "platform_system == \"Windows\""}
 
 [[package]]
+name = "cloudpickle"
+version = "3.1.2"
+description = "Pickler class to extend the standard pickle.Pickler functionality"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+markers = "sys_platform == \"darwin\" and platform_machine == \"x86_64\""
+files = [
+    {file = "cloudpickle-3.1.2-py3-none-any.whl", hash = "sha256:9acb47f6afd73f60dc1df93bb801b472f05ff42fa6c84167d25cb206be1fbf4a"},
+    {file = "cloudpickle-3.1.2.tar.gz", hash = "sha256:7fda9eb655c9c230dab534f1983763de5835249750e85fbcef43aaa30a9a2414"},
+]
+
+[[package]]
 name = "cmudict"
 version = "1.1.3"
 description = "A versioned python wrapper package for The CMU Pronouncing Dictionary data files."
@@ -686,55 +711,6 @@ docs = ["ipython", "matplotlib", "numpydoc", "sphinx"]
 tests = ["pytest", "pytest-cov", "pytest-xdist"]
 
 [[package]]
-name = "cython"
-version = "3.2.9"
-description = "The Cython compiler for writing C extensions in the Python language."
-optional = false
-python-versions = ">=3.8"
-groups = ["main"]
-files = [
-    {file = "cython-3.2.9-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:2751b7c0cb13135aadcc1cc8fe223be98d458cd1132611d31675e768a5e4a2e9"},
-    {file = "cython-3.2.9-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ccb0bc6b8437cfcb04459a02bc5ecc58bf161ea11659438945ab5a1392ee39fe"},
-    {file = "cython-3.2.9-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:1c2974742433be5c36ae1df1e761ce0063753fc2702316d5a3062b0a4e94a1df"},
-    {file = "cython-3.2.9-cp310-cp310-win_amd64.whl", hash = "sha256:a3fc783d12202d1b064b6f125772d85f00e36e62eee6b2e415f56d8fd2d2e7b2"},
-    {file = "cython-3.2.9-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:e8ec2d5a7b798c84d6779e7ca5318fd928b8fe9dd021106d714dc2e77cdc7555"},
-    {file = "cython-3.2.9-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:cac792b0bde1c86d8f832e513cd061b7e682181cc5a6d843d487e6c8ae9d5fcb"},
-    {file = "cython-3.2.9-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:8c843dd85857cd0d0da055489f448d032866120cfb094ce16205a1ff54d06353"},
-    {file = "cython-3.2.9-cp311-cp311-win_amd64.whl", hash = "sha256:efd54fe07f808e7e82f6a04f370457ca02e770c948f0e2f83345ccc7ec8bb829"},
-    {file = "cython-3.2.9-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:114b2dee0fa1daa48a59574d848da0ff1b6bdb725a755e9b92fad14962e1ff8d"},
-    {file = "cython-3.2.9-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:a5cd9c5f138cb052130b40ad3b6976d2180c35348410995812678f4636bd8f94"},
-    {file = "cython-3.2.9-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:23e80bc885c599e72072e18d0746df82d394b73100c1e153cda7359e6e59fe09"},
-    {file = "cython-3.2.9-cp312-cp312-win_amd64.whl", hash = "sha256:4b1fd5a9c03f72a18618668a8e90d569442ed742f910e3ad003dcc9348e9598b"},
-    {file = "cython-3.2.9-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:44b7fc417933d65bf31bce00337ff318efa3ea59daed21d10fe842d41e657c08"},
-    {file = "cython-3.2.9-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:41637c644d7224d2d3170ee312077c2173693f0d4a0da1c82a0cffa3680a42dc"},
-    {file = "cython-3.2.9-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:f815cd3387bd88ca9eeabc357ce4bdf884eef0ab2949db0fbd5e0b69fe5ee422"},
-    {file = "cython-3.2.9-cp313-cp313-win_amd64.whl", hash = "sha256:ddb43637b7749b88644df4319e1c36f767e7fb71a92bb9942558c8de2f1cc5f4"},
-    {file = "cython-3.2.9-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:63a42e131112072f912b66734088abc946c6bc42cb7454461a6dfdd2d09d3bae"},
-    {file = "cython-3.2.9-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:f25b402a6f1eed34af2af57603a9aadcf594dacaced1655e925eb317fba3f337"},
-    {file = "cython-3.2.9-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9d3cba9c4770cf76370fead8d2ae71bc474f3ef67ae4119e455d025726bcdc1c"},
-    {file = "cython-3.2.9-cp314-cp314-win_amd64.whl", hash = "sha256:56d95c0674c25f281c6ae8f1d17bd425d6c2818bb304ff781831bb5d00d04b0b"},
-    {file = "cython-3.2.9-cp38-cp38-macosx_11_0_arm64.whl", hash = "sha256:788ea800618d20158166d09f60835aab50922ae1cfe3108c93fa72e173b7002d"},
-    {file = "cython-3.2.9-cp38-cp38-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:522e277c29ebee304e73f3a78307549d09908b0c63098421a12dffc8d779fd74"},
-    {file = "cython-3.2.9-cp38-cp38-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e9c39962f749bd40c6e8c5063d498bd3749947888306ffedb99a0cab3a69f995"},
-    {file = "cython-3.2.9-cp38-cp38-win_amd64.whl", hash = "sha256:681980fcc82b346ac83bc7d59e68ca1eba74ed9576f5d8584761d0c6c68c45d0"},
-    {file = "cython-3.2.9-cp39-abi3-macosx_10_9_x86_64.whl", hash = "sha256:944dc8747f640b3527649c566a5fc75ee0c15e80642ea2fdae4fe6378e1a9d4a"},
-    {file = "cython-3.2.9-cp39-abi3-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:4b871ad97dd7fb1cbf56f6238c54423febd310afc1d9d9bc70c69c89b7ce57fc"},
-    {file = "cython-3.2.9-cp39-abi3-manylinux2014_armv7l.manylinux_2_17_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:e9b6ebc6c74b4318eaa4e51e520dc8b95ebc7b262953c3ecb24131104681f14e"},
-    {file = "cython-3.2.9-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:92989da161a7d18a7ad4baebc49289b2b77556d5a94916f90140ba26aecf6892"},
-    {file = "cython-3.2.9-cp39-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:e75ec625d8f8781ced690b7a2f5c2d138067711cf24bb8fb68c872c30c2fefe5"},
-    {file = "cython-3.2.9-cp39-abi3-musllinux_1_2_i686.whl", hash = "sha256:2b1756ddc3bc0cd4341a515fc420c3e25e13c249f5537159b3fb0bff8d19e55c"},
-    {file = "cython-3.2.9-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:7d41baea51ea00f9237f75af498577827493bca5e9b45bbd4e351543727e589a"},
-    {file = "cython-3.2.9-cp39-abi3-win32.whl", hash = "sha256:61d4abbf84f77c8d19361d05d9f51d65d8d95e74f736eae55fa1aed8a1430469"},
-    {file = "cython-3.2.9-cp39-abi3-win_arm64.whl", hash = "sha256:57a6a78d14f7dd7d6062d9bca694e2a8c1c14113b6ceceea076abcd1161fdc5a"},
-    {file = "cython-3.2.9-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:d15c4d4ba8a3ad284124384f769465bfba45512aaa4c81caea8a165f79fc042a"},
-    {file = "cython-3.2.9-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:f2fe4bc1b8fa4130563b94a3614db9ea17e92a455bed00e6a5d03eaff434b33c"},
-    {file = "cython-3.2.9-cp39-cp39-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7c534d782757710e39f3c9582214d7a28a0d68c86e78ee3df1d729cbc270e133"},
-    {file = "cython-3.2.9-cp39-cp39-win_amd64.whl", hash = "sha256:c6d4a92a87d238231564b5cbf27a8d1e46b7e62040c66b5ff33778a16b22295e"},
-    {file = "cython-3.2.9-py3-none-any.whl", hash = "sha256:a2b0e87f6b80790c929308ca0831d686f7a180feab684fe8cd4a4380bd96aaca"},
-    {file = "cython-3.2.9.tar.gz", hash = "sha256:d249c9022ab13286b17bd66f30609e800c5f95efeecb06168990c7a66cecde6c"},
-]
-
-[[package]]
 name = "decorator"
 version = "4.4.2"
 description = "Decorators for Humans"
@@ -748,71 +724,92 @@ files = [
 
 [[package]]
 name = "demucs"
-version = "2.0.3"
+version = "4.0.1"
 description = "Music source separation in the waveform domain."
 optional = false
-python-versions = ">=3.7.0"
+python-versions = ">=3.8.0"
 groups = ["main"]
+markers = "sys_platform == \"darwin\" and platform_machine == \"x86_64\""
 files = [
-    {file = "demucs-2.0.3.tar.gz", hash = "sha256:f7a8c0cdc9be24d7d8d0e826e64e5ea1cd7a7aa8a3032fe786b932fd7b4ffcce"},
+    {file = "demucs-4.0.1.tar.gz", hash = "sha256:e45a5a788bae79767c37bbf6e69aae03862ddcca05550fb79b926346a177d713"},
 ]
 
 [package.dependencies]
-diffq = ">=0.1"
+dora-search = "*"
+einops = "*"
 julius = ">=0.2.3"
 lameenc = ">=1.2"
-numpy = "*"
+openunmix = "*"
+pyyaml = "*"
 torch = ">=1.8.1"
 torchaudio = ">=0.8"
 tqdm = "*"
 
 [package.extras]
-dev = ["flake8"]
+dev = ["diffq (>=0.2.1)", "dora-search (>=0.1.12)", "einops", "flake8", "hydra-colorlog (>=1.1)", "hydra-core (>=1.1)", "julius (>=0.2.3)", "lameenc (>=1.2)", "museval", "mypy", "openunmix", "pyyaml", "soundfile (>=0.10.3) ; sys_platform == \"win32\"", "submitit", "torch (>=1.8.1)", "torchaudio (>=0.8)", "tqdm", "treetable"]
 
 [[package]]
-name = "diffq"
-version = "0.2.4"
-description = "Differentiable quantization framework for PyTorch."
+name = "demucs"
+version = "4.1.0"
+description = "Music source separation in the waveform domain."
 optional = false
-python-versions = ">=3.7.0"
+python-versions = ">=3.10"
 groups = ["main"]
+markers = "sys_platform != \"darwin\" or platform_machine != \"x86_64\""
 files = [
-    {file = "diffq-0.2.4-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:3d8e6d6b882dd93568b41a7da9ff9657845ec08c82e71460544d0d04ed112320"},
-    {file = "diffq-0.2.4-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:15d5055ebfc629914689d66fcfa36f6d751fd45b4b2331ba0d3390604e2b40fa"},
-    {file = "diffq-0.2.4-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:cf990911fc2c932e505df9958ce50417f182fe9178b2dbe329173b29e6521727"},
-    {file = "diffq-0.2.4-cp310-cp310-manylinux_2_5_i686.manylinux1_i686.manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:d62ffd89498611dbf32cde417f5fc8d222f450085b06afb4e8764307906ab2ca"},
-    {file = "diffq-0.2.4-cp310-cp310-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:71a374573ec064227665208a5892d88032cb18736f68560d5522e0c48138ced1"},
-    {file = "diffq-0.2.4-cp310-cp310-win32.whl", hash = "sha256:1480ea49785dfdcc793a3f20043aba430f510d51487063e3617020f5a2d2a753"},
-    {file = "diffq-0.2.4-cp310-cp310-win_amd64.whl", hash = "sha256:3467622841b15ece3d953fa42ad65f41703afe30e777bb910b96c89125174c8e"},
-    {file = "diffq-0.2.4-cp37-cp37m-macosx_10_9_x86_64.whl", hash = "sha256:3aef094383d39e12508ddf61c45a377986b2d4bac26ee553b6504fee10e2ff9d"},
-    {file = "diffq-0.2.4-cp37-cp37m-manylinux_2_5_i686.manylinux1_i686.manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:0729231949ec74641709ad9b713ba127898735ba20ec8f44677d984d2ce1c3b9"},
-    {file = "diffq-0.2.4-cp37-cp37m-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:d6779a81fcb8045d006a5f309c52a34e48fefb73db99232b4b1452a8829c083c"},
-    {file = "diffq-0.2.4-cp37-cp37m-win32.whl", hash = "sha256:36f568bb1bbf75ac5601115e6253828c8c7b21a0501d7fcdc3b9545f80dc74f7"},
-    {file = "diffq-0.2.4-cp37-cp37m-win_amd64.whl", hash = "sha256:ee7f31d56f5131c2577dfa7bdb7d7284c5cce031fca0e30ac10d248b3e0e6841"},
-    {file = "diffq-0.2.4-cp38-cp38-macosx_10_9_universal2.whl", hash = "sha256:de84917882a3def0d71548e5366813f7e25a7b110d2085fe0b0fa4c9877f5098"},
-    {file = "diffq-0.2.4-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:8937f15e45464fd899e9b3a6b1b57700c977367caf50a626f872dbb7883e3c1c"},
-    {file = "diffq-0.2.4-cp38-cp38-macosx_11_0_arm64.whl", hash = "sha256:8ff6ff92f3978770b0d2d355a5e553a554ea22732236cda9171c0683e5da5577"},
-    {file = "diffq-0.2.4-cp38-cp38-manylinux_2_5_i686.manylinux1_i686.manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:0b0cf50749d1a80fb74ee9e5135e08f06b519ab57f5b725bb374b2866412b725"},
-    {file = "diffq-0.2.4-cp38-cp38-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:0381dedef3b88b4910eedfd894610ecac9affd689c2191c96694b70b3366dd27"},
-    {file = "diffq-0.2.4-cp38-cp38-win32.whl", hash = "sha256:e793fed11642fdb4909efc0f87f2dbb52808dc5fa9865d7fcadb93ec5fd3aacd"},
-    {file = "diffq-0.2.4-cp38-cp38-win_amd64.whl", hash = "sha256:7566f823bda2f3f786dfea1ca2cfaa9663b854ccafcb1b185a4370690b628cf5"},
-    {file = "diffq-0.2.4-cp39-cp39-macosx_10_9_universal2.whl", hash = "sha256:967a30e3a9da922d8705c3dbf44bb82d5b76a3ad49ecaa4c9450d97479fe8a31"},
-    {file = "diffq-0.2.4-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:78124e86f1e208830bfebe744c2321d92c65ba5d7e125d260ed418b4a2fa93df"},
-    {file = "diffq-0.2.4-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:ce966eb21bbb983e5bf5957c5832cad57d0968b7c5602da4065c3d1603ef8a95"},
-    {file = "diffq-0.2.4-cp39-cp39-manylinux_2_5_i686.manylinux1_i686.manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:02268472f1646cafe4fb3feaad9ac519f7e65d617871a58b56e71bc552fc8fb3"},
-    {file = "diffq-0.2.4-cp39-cp39-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:a5fc5cf4967d7cea065e75d2044824137ad08f1ccf7571d871cbf03bcf8809bd"},
-    {file = "diffq-0.2.4-cp39-cp39-win32.whl", hash = "sha256:71575ca7202628ee1380a993aebee7e15c23ee12a96bc1a4dd1bff023aafdee2"},
-    {file = "diffq-0.2.4-cp39-cp39-win_amd64.whl", hash = "sha256:9729121832c9abbbf4c443effe4e2c2952c48170d8c8255d79012d236c8dcd6d"},
-    {file = "diffq-0.2.4.tar.gz", hash = "sha256:049064861e974ebf00d0badab8b324c775037371419eda3150985b9d477b5bd2"},
+    {file = "demucs-4.1.0-py3-none-any.whl", hash = "sha256:4916a804702033ce934a6cdfa7e38dde03f7a7a6e85f41d0120eefe9e2966758"},
+    {file = "demucs-4.1.0.tar.gz", hash = "sha256:d94c4f7dac886595b66af405c0fd1756fa00c297183f1cf021fd2eeedeeb67b2"},
 ]
 
 [package.dependencies]
-Cython = "*"
-numpy = "*"
-torch = "*"
+einops = "*"
+huggingface-hub = "*"
+julius = ">=0.2.3"
+lameenc = ">=1.2"
+numpy = {version = "<2", markers = "sys_platform == \"darwin\" and platform_machine == \"x86_64\""}
+pyyaml = "*"
+safetensors = "*"
+sphn = ">=0.1.12"
+torch = {version = ">=2.1", markers = "sys_platform != \"darwin\" or platform_machine != \"x86_64\""}
+tqdm = "*"
 
 [package.extras]
-dev = ["coverage", "flake8", "pdoc3", "torchvision"]
+quantized = ["diffq (>=0.2.1)"]
+train = ["dora-search (>=0.1.12)", "hydra-colorlog (>=1.1)", "hydra-core (>=1.1)", "musdb (>=0.4.0)", "museval", "submitit", "torchaudio (>=2.1) ; sys_platform != \"darwin\" or platform_machine != \"x86_64\"", "torchaudio (>=2.1,<2.3) ; sys_platform == \"darwin\" and platform_machine == \"x86_64\"", "treetable"]
+
+[[package]]
+name = "dora-search"
+version = "0.1.12"
+description = "Easy grid searches for ML."
+optional = false
+python-versions = ">=3.7.0"
+groups = ["main"]
+markers = "sys_platform == \"darwin\" and platform_machine == \"x86_64\""
+files = [
+    {file = "dora_search-0.1.12.tar.gz", hash = "sha256:2956fd2c4c7e4b9a4830e83f0d4cf961be45cfba1a2f0570281e91d15ac516fb"},
+]
+
+[package.dependencies]
+omegaconf = "*"
+retrying = "*"
+submitit = "*"
+torch = "*"
+treetable = "*"
+
+[package.extras]
+dev = ["coverage", "flake8", "hiplot", "hydra-core", "hydra_colorlog", "mypy", "pdoc3", "pytest", "pytorch_lightning"]
+
+[[package]]
+name = "einops"
+version = "0.8.2"
+description = "A new flavour of deep learning operations"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "einops-0.8.2-py3-none-any.whl", hash = "sha256:54058201ac7087911181bfec4af6091bb59380360f069276601256a76af08193"},
+    {file = "einops-0.8.2.tar.gz", hash = "sha256:609da665570e5e265e27283aab09e7f279ade90c4f01bcfca111f3d3e13f2827"},
+]
 
 [[package]]
 name = "faster-whisper"
@@ -2442,6 +2439,23 @@ files = [
 ]
 
 [[package]]
+name = "omegaconf"
+version = "2.3.1"
+description = "A flexible configuration library"
+optional = false
+python-versions = ">=3.6"
+groups = ["main"]
+markers = "sys_platform == \"darwin\" and platform_machine == \"x86_64\""
+files = [
+    {file = "omegaconf-2.3.1-py3-none-any.whl", hash = "sha256:3d701d14e9a8828f1edd28bb70b725908b34277cdd72cf7d6a83f94dadc6b6a0"},
+    {file = "omegaconf-2.3.1.tar.gz", hash = "sha256:e5e7de64aeebeddaf8e6d3f7a783b32ac2a01c0fbd9c878012caecb891a1f42a"},
+]
+
+[package.dependencies]
+antlr4-python3-runtime = "==4.9.*"
+PyYAML = ">=5.1.0"
+
+[[package]]
 name = "onnxruntime"
 version = "1.29.0"
 description = "ONNX Runtime is a runtime accelerator for Machine Learning models"
@@ -2530,6 +2544,31 @@ numpy = [
     {version = ">=1.23.5", markers = "python_version == \"3.11\""},
     {version = ">=1.26.0", markers = "python_version >= \"3.12\""},
 ]
+
+[[package]]
+name = "openunmix"
+version = "1.3.0"
+description = "PyTorch-based music source separation toolkit"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+markers = "sys_platform == \"darwin\" and platform_machine == \"x86_64\""
+files = [
+    {file = "openunmix-1.3.0-py3-none-any.whl", hash = "sha256:e893ae22c5b8001a6107022499c2587b70d5c2e4777cc7c9ed6272b68a69534e"},
+    {file = "openunmix-1.3.0.tar.gz", hash = "sha256:cc9245ce728700f5d0b72c67f01be4162777e617cdc47f9b035963afac180fc8"},
+]
+
+[package.dependencies]
+numpy = "*"
+torch = ">=1.9.0"
+torchaudio = ">=0.9.0"
+tqdm = "*"
+
+[package.extras]
+asteroid = ["asteroid-filterbanks (>=0.3.2)"]
+evaluation = ["musdb (>=0.4.0)", "museval (>=0.4.0)"]
+stempeg = ["stempeg"]
+tests = ["asteroid-filterbanks (>=0.3.2)", "musdb (>=0.4.0)", "museval (>=0.4.0)", "onnx", "pytest", "stempeg", "tqdm"]
 
 [[package]]
 name = "opt-einsum"
@@ -3302,6 +3341,19 @@ socks = ["PySocks (>=1.5.6,!=1.5.7)"]
 use-chardet-on-py3 = ["chardet (>=3.0.2,<8)"]
 
 [[package]]
+name = "retrying"
+version = "1.4.2"
+description = "Retrying"
+optional = false
+python-versions = ">=3.6"
+groups = ["main"]
+markers = "sys_platform == \"darwin\" and platform_machine == \"x86_64\""
+files = [
+    {file = "retrying-1.4.2-py3-none-any.whl", hash = "sha256:bbc004aeb542a74f3569aeddf42a2516efefcdaff90df0eb38fbfbf19f179f59"},
+    {file = "retrying-1.4.2.tar.gz", hash = "sha256:d102e75d53d8d30b88562d45361d6c6c934da06fab31bd81c0420acb97a8ba39"},
+]
+
+[[package]]
 name = "rich"
 version = "13.9.4"
 description = "Render rich text, tables, progress bars, syntax highlighting, markdown and more to the terminal"
@@ -3346,6 +3398,49 @@ files = [
     {file = "ruff-0.1.15-py3-none-win_arm64.whl", hash = "sha256:9a933dfb1c14ec7a33cceb1e49ec4a16b51ce3c20fd42663198746efc0427360"},
     {file = "ruff-0.1.15.tar.gz", hash = "sha256:f6dfa8c1b21c913c326919056c390966648b680966febcb796cc9d1aaab8564e"},
 ]
+
+[[package]]
+name = "safetensors"
+version = "0.8.0"
+description = ""
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+markers = "sys_platform != \"darwin\" or platform_machine != \"x86_64\""
+files = [
+    {file = "safetensors-0.8.0-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:c554f85858e05226d3c2828e32395e677434685d6d94594a41643361c5e837f0"},
+    {file = "safetensors-0.8.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:c80201d22cbf405b80647a60ada77bba06c8fba2da2743ba1e89cdcc39a81f25"},
+    {file = "safetensors-0.8.0-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:7a46e5ff292c356d6991e60942ba7f79817682d3a2cef0702136448cb9c4d235"},
+    {file = "safetensors-0.8.0-cp310-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:4124502b78f03534117c848f87a39b8f31e577b15eff423bf8bfb95f2a8c30d0"},
+    {file = "safetensors-0.8.0-cp310-abi3-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:7bc0a787ba8a35be368ee3574edfa2b1ad389eebd0a72e482ae275490e3f6c98"},
+    {file = "safetensors-0.8.0-cp310-abi3-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:040070828e36dc8e122178bbbd5830ff9e97920affb84cbe0f46442497bed358"},
+    {file = "safetensors-0.8.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:fd6f3f93c9a0a7cc2788ee63fb763353d4bd2e89b0751bc78fcf7dda00bea774"},
+    {file = "safetensors-0.8.0-cp310-abi3-manylinux_2_31_riscv64.whl", hash = "sha256:fcdd41ec4628fee5799f807c73c353629130fbd942aa23d83c623dd6c9d52d78"},
+    {file = "safetensors-0.8.0-cp310-abi3-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:8e9f537aa183a38ace122d27303dcd986b26bd2a7591f9181d7f0c396f4677ca"},
+    {file = "safetensors-0.8.0-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:87eec7ffed2b809f05a398a8becb7d013f19f7837cd15d9748580d6cf30dbaf4"},
+    {file = "safetensors-0.8.0-cp310-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:4a95ae2b05d7726d751da4ebf626a2ca782b706e101bd894c95bc2450b1cffcc"},
+    {file = "safetensors-0.8.0-cp310-abi3-musllinux_1_2_i686.whl", hash = "sha256:3ae091f16662658bdc019a4ff6cb4c085bb7d725eb5978b183ffd265863b6d2d"},
+    {file = "safetensors-0.8.0-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:8e080062fcde23be189565e1c3305d16751a218ecf9412c8601e64204eb6f846"},
+    {file = "safetensors-0.8.0-cp310-abi3-win32.whl", hash = "sha256:2ddf52eac562eda224f99acfa7889d02968c1fd59a5b011ae7d8137c37e9c02d"},
+    {file = "safetensors-0.8.0-cp310-abi3-win_amd64.whl", hash = "sha256:096ec1a98435df7beb08853bb5aa9081a84f23d0adc67ed1a0a10550f608373f"},
+    {file = "safetensors-0.8.0-cp310-abi3-win_arm64.whl", hash = "sha256:f7838e5135a406ad3e02efdcb8cf2e5397d368b0154537c4fec682dbc544d452"},
+    {file = "safetensors-0.8.0.tar.gz", hash = "sha256:fabaf3e0f18a6618d9b36560682562157f77c2b71fcffc7b432be2baed9d753d"},
+]
+
+[package.extras]
+all = ["safetensors[convert]", "safetensors[jax]", "safetensors[numpy]", "safetensors[paddlepaddle]", "safetensors[quality]", "safetensors[testing]", "safetensors[torch]"]
+convert = ["huggingface-hub (>=1.4)", "safetensors[torch]"]
+dev = ["safetensors[all]", "safetensors[pinned-tf]"]
+jax = ["flax (>=0.6.3)", "jax (>=0.3.25)", "jaxlib (>=0.3.25)", "safetensors[numpy]"]
+mlx = ["mlx (>=0.0.9)"]
+numpy = ["numpy (>=1.24.6)"]
+paddlepaddle = ["paddlepaddle (>=2.4.1)", "safetensors[numpy]"]
+pinned-tf = ["safetensors[numpy]", "tensorflow (==2.18.0)"]
+quality = ["ruff"]
+tensorflow = ["safetensors[numpy]", "tensorflow (>=2.11.0)"]
+testing = ["fsspec (>=2024.6.0)", "h5py (>=3.7.0)", "hypothesis (>=6.70.2)", "pytest (>=9.0)", "pytest-benchmark (>=5.2)", "s3fs (>=2024.6.0)", "safetensors[numpy]", "setuptools-rust (>=1.12.0)"]
+tf-nightly = ["safetensors[numpy]", "tf-nightly"]
+torch = ["safetensors[numpy]", "torch (>=2.4)"]
 
 [[package]]
 name = "scikit-learn"
@@ -3689,6 +3784,33 @@ docs = ["linkify-it-py", "myst-parser", "sphinx", "sphinx-book-theme"]
 test = ["pytest"]
 
 [[package]]
+name = "sphn"
+version = "0.2.1"
+description = ""
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+markers = "sys_platform != \"darwin\" or platform_machine != \"x86_64\""
+files = [
+    {file = "sphn-0.2.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:fb9b2fab6a89df7e7d8be733bc656a00a99e550ac01fa7c877a3154b2bd891b9"},
+    {file = "sphn-0.2.1-cp310-cp310-manylinux_2_24_x86_64.whl", hash = "sha256:8d599963b95f091fd68fbb46596ac27ef3e54f8dbbce88bd2bb25c8b078a9f06"},
+    {file = "sphn-0.2.1-cp310-cp310-win_amd64.whl", hash = "sha256:89f6bf23116b800597b6675ce42ded47634f7478b7f73ed9aa3e402ca6d706d7"},
+    {file = "sphn-0.2.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:a2238bcb66c21322ddc4a9308d7fbd4903175951ee4357cad8056c5e371e447f"},
+    {file = "sphn-0.2.1-cp311-cp311-manylinux_2_24_x86_64.whl", hash = "sha256:f2a574447760f5fd32e4764654350d9c5a67cfd4cd6e390b298a8f854dbc3d23"},
+    {file = "sphn-0.2.1-cp311-cp311-win_amd64.whl", hash = "sha256:045bd18f2892dc686352b4cefe78f09204ee655c3b3604f91b346289b1686b9f"},
+    {file = "sphn-0.2.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:9a95d6c546555d30a15ed3f733abaee02575296313e7fa4b9d2dda24422ecc12"},
+    {file = "sphn-0.2.1-cp312-cp312-manylinux_2_24_x86_64.whl", hash = "sha256:27527d82ae2db9fbd8b7cbd787160e5d8002d385c785d217bd1c6fed32c37b06"},
+    {file = "sphn-0.2.1-cp312-cp312-win_amd64.whl", hash = "sha256:ced0ed1b8fb05643d04166707bfb27521d9642b191e1fec75a4c7f6d279aa137"},
+    {file = "sphn-0.2.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:6fc651ba2875f609b0d8d0c4af37e60c94baa21a3b52145ef018fd3cd1384f9f"},
+    {file = "sphn-0.2.1-cp313-cp313-manylinux_2_24_x86_64.whl", hash = "sha256:8903d581e0bf93efd777e042e414a364c7ea804f9864692d3af6599c315ff192"},
+    {file = "sphn-0.2.1-cp313-cp313-win_amd64.whl", hash = "sha256:ce0caa7858a5e41cd66fcfae7a034877512f12fbb838d3b54662020b97895569"},
+    {file = "sphn-0.2.1-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:051458b6ab24a0c39d53b3ffe2ea83f675ae9fcc443591570caad3552fae4a78"},
+    {file = "sphn-0.2.1-cp314-cp314-manylinux_2_24_x86_64.whl", hash = "sha256:a793040472e4039fd05ae4d33c75c3f51eea75f94cafc9e54a4ea4cf6df480d7"},
+    {file = "sphn-0.2.1-cp314-cp314-win_amd64.whl", hash = "sha256:5d5c715216f36f070115b69de220e918cd7da25f01a02e20a3dc0517d4942101"},
+    {file = "sphn-0.2.1.tar.gz", hash = "sha256:3b19b1fece67d979d84080458bed545d1f55ddc5abac6ca5deae2672a184c7fe"},
+]
+
+[[package]]
 name = "standard-aifc"
 version = "3.13.0"
 description = "Standard library aifc redistribution. \"dead battery\"."
@@ -3733,6 +3855,26 @@ files = [
 
 [package.dependencies]
 audioop-lts = {version = "*", markers = "python_version >= \"3.13\""}
+
+[[package]]
+name = "submitit"
+version = "1.5.4"
+description = "\"Python 3.8+ toolbox for submitting jobs to Slurm"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+markers = "sys_platform == \"darwin\" and platform_machine == \"x86_64\""
+files = [
+    {file = "submitit-1.5.4-py3-none-any.whl", hash = "sha256:c26f3a7c8d4150eaf70b1da71e2023e9e9936c93e8342ed7db910f29158561c5"},
+    {file = "submitit-1.5.4.tar.gz", hash = "sha256:7100848bd1cdda79c7196e54ee830793ae75fd7adde0c5bef738d72360a07508"},
+]
+
+[package.dependencies]
+cloudpickle = ">=1.2.1"
+typing_extensions = ">=3.7.4.2"
+
+[package.extras]
+dev = ["black (==23.3.0)", "coverage[toml] (>=5.1)", "flit (>=3.5.1)", "isort (==5.11.5)", "mypy (>=1.4.1)", "pre-commit (>=1.15.2)", "pylint (>=3.0.0)", "pytest (>=7.4.2)", "pytest-asyncio (>=0.15.0)", "pytest-cov (>=4.1.0)"]
 
 [[package]]
 name = "sympy"
@@ -3934,6 +4076,19 @@ slack = ["envwrap", "slack-sdk"]
 telegram = ["envwrap", "requests"]
 
 [[package]]
+name = "treetable"
+version = "0.2.6"
+description = "Helper to pretty print an ascii table with a tree-like structure"
+optional = false
+python-versions = ">=3.6.0"
+groups = ["main"]
+markers = "sys_platform == \"darwin\" and platform_machine == \"x86_64\""
+files = [
+    {file = "treetable-0.2.6-py3-none-any.whl", hash = "sha256:fa7dfa0297d2bbc5882191edd2e15f79a5e883e352f489e2acadb221db565adf"},
+    {file = "treetable-0.2.6.tar.gz", hash = "sha256:7e1d62dbce503fbf24561aee1461b8fbcc2c232ff45661c3b9d0c2081c795bdf"},
+]
+
+[[package]]
 name = "typing-extensions"
 version = "4.16.0"
 description = "Backported and Experimental Type Hints for Python 3.9+"
@@ -4024,4 +4179,4 @@ type = ["pytest-mypy (>=1.0.1) ; platform_python_implementation != \"PyPy\""]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "571de3864232d853517cf3936a7826745a974ee06ee3a943955f0c49da3646ee"
+content-hash = "25631f90cded118ed8bc7cc6d2ea28fe0beeba87578b27db9edf631ca1772b44"
