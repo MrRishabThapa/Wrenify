@@ -11,8 +11,10 @@ Output: vocals.wav + instrumental.wav stored in song folder.
 
 from __future__ import annotations
 
+import platform
 import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,12 +48,21 @@ class VocalSeparator:
         self._verify_demucs()
 
     def _verify_demucs(self) -> None:
+        run_kwargs = {
+            "capture_output": True,
+            "text": True,
+            "timeout": 15,
+        }
+        # Windows-only: hide console window
+        if platform.system() == "Windows":
+            run_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
         try:
             result = subprocess.run(
                 # "python -m demucs" imports optional musdb and crashes —
                 # demucs.separate is the stable CLI entrypoint.
-                ["python", "-m", "demucs.separate", "--help"],
-                capture_output=True, text=True, timeout=15,
+                [sys.executable, "-m", "demucs.separate", "--help"],
+                **run_kwargs,
             )
             if result.returncode != 0:
                 raise RuntimeError("demucs check failed")
@@ -83,7 +94,7 @@ class VocalSeparator:
             progress_callback("Starting Demucs separation...")
 
         cmd = [
-            "python", "-m", "demucs.separate",
+            sys.executable, "-m", "demucs.separate",
             "--two-stems", "vocals",
             "-n", self.model,
             "--segment", "6",        # Lower = less RAM on 8GB systems
@@ -95,10 +106,17 @@ class VocalSeparator:
         logger.info(f"Running Demucs on {input_path.name} ({source_duration:.0f}s)")
         start = time.monotonic()
 
-        process = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, bufsize=1,
-        )
+        popen_kwargs = {
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.STDOUT,
+            "text": True,
+            "bufsize": 1,
+        }
+        # Windows-only: hide console window
+        if platform.system() == "Windows":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+        process = subprocess.Popen(cmd, **popen_kwargs)
 
         for line in process.stdout:
             line = line.strip()
