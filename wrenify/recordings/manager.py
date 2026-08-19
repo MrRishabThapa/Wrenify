@@ -48,7 +48,6 @@ class RecordingsManager:
         instrumental_samples: Optional[np.ndarray] = None,
         video_frames: Optional[list] = None,
         video_fps: float = 24.0,
-        score_data: Optional[dict] = None,
     ) -> Recording:
         """
         Save a recording with all available audio versions.
@@ -59,7 +58,6 @@ class RecordingsManager:
             instrumental_samples: Optional matching instrumental slice
                           (enables mixed versions)
             video_frames: Optional webcam frames
-            score_data: Score metadata
 
         Returns:
             Recording object pointing to saved files
@@ -133,7 +131,6 @@ class RecordingsManager:
 
         # Metadata
         duration = len(voice_samples) / sample_rate
-        score = score_data or {}
 
         recording = Recording(
             id=folder_name,
@@ -148,12 +145,6 @@ class RecordingsManager:
             mixed_autotuned_path=mixed_autotuned_path,
             video_raw_path=video_raw_path,
             video_autotuned_path=video_autotuned_path,
-            grade=score.get("grade", "N/A"),
-            score_pct=score.get("total_score", 0.0),
-            correct_count=score.get("correct_count", 0),
-            wrong_count=score.get("wrong_count", 0),
-            missed_count=score.get("missed_count", 0),
-            total_words=score.get("total_words", 0),
         )
 
         meta_path = folder / "meta.json"
