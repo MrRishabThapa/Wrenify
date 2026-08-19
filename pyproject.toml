@@ -49,6 +49,16 @@ pydub = "^0.25.1"
 yt-dlp = "^2026.7.4"
 mediapipe = "0.10.21"
 
+# Vocal separation (CPU-only torch — no CUDA on this machine)
+demucs = "^2.0.0"
+torch = {version = "^2.13.0", source = "pytorch-cpu"}
+torchaudio = {version = "^2.11.0", source = "pytorch-cpu"}
+
+[[tool.poetry.source]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "explicit"
+
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.1.0"
 pytest = "^7.4.0"
