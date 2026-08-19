@@ -23,6 +23,7 @@ from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from wrenify.audio.capture import AudioCapture
 from wrenify.audio.player import AudioPlayer
+from wrenify.core.config import CONFIG
 from wrenify.karaoke.matcher import WordMatcher
 from wrenify.karaoke.scorer import Scorer, ScoreReport
 from wrenify.karaoke.timeline import Timeline
@@ -105,6 +106,7 @@ class KaraokeSession(QObject):
         self._is_recording = False
         self._recorded_audio: list[np.ndarray] = []
         self._recorded_frames: list = []  # Frame objects from webcam
+        self._recorded_sample_rate: int = CONFIG.audio.sample_rate
 
     def start(self) -> None:
         """Start the karaoke session."""
@@ -226,27 +228,42 @@ class KaraokeSession(QObject):
             logger.info("Recording STARTED")
             self._recorded_audio.clear()
             self._recorded_frames.clear()
+            if self.audio_capture is not None:
+                self._recorded_sample_rate = self.audio_capture.cfg.sample_rate
         else:
             logger.info("Recording STOPPED")
 
     def is_recording(self) -> bool:
         return self._is_recording
 
+    def has_recording(self) -> bool:
+        """True if any audio was captured during this session."""
+        return bool(self._recorded_audio)
+
     def export_recording(self, output_path: Optional[Path] = None) -> Optional[Path]:
-        """Export recorded audio + webcam frames as MP4."""
+        """Export recorded audio + webcam frames as MP4 (WAV if no frames)."""
         if not self._recorded_audio:
             logger.warning("Nothing recorded")
             return None
 
-        if not self._recorded_frames:
-            logger.warning("No webcam frames captured — nothing to export")
-            return None
+        audio = np.concatenate(self._recorded_audio)
 
-        import numpy as np
+        if not self._recorded_frames:
+            # Audio only — save as WAV
+            import soundfile as sf
+
+            wav_path = (
+                output_path
+                if output_path is not None and output_path.suffix == ".wav"
+                else (output_path or Path.cwd() / "wrenify_recording").with_suffix(".wav")
+            )
+            wav_path.parent.mkdir(parents=True, exist_ok=True)
+            sf.write(str(wav_path), audio, self._recorded_sample_rate)
+            logger.success(f"Audio saved: {wav_path}")
+            return wav_path
 
         from wrenify.video.exporter import VideoExporter
 
-        audio = np.concatenate(self._recorded_audio)
         exporter = VideoExporter(
             output_dir=output_path.parent if output_path else None
         )
@@ -255,7 +272,7 @@ class KaraokeSession(QObject):
         return exporter.export(
             frames=self._recorded_frames,
             audio=audio,
-            sample_rate=self.audio_capture.cfg.sample_rate if self.audio_capture else 44100,
+            sample_rate=self._recorded_sample_rate,
             output_name=output_path.stem if output_path else f"wrenify_{song_name}",
         )
 
