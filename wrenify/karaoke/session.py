@@ -50,6 +50,7 @@ class KaraokeSession(QObject):
     finished_signal = pyqtSignal(ScoreReport)
     audio_level_signal = pyqtSignal(float)  # RMS 0.0 to 1.0
     recording_toggled  = pyqtSignal(bool)   # True = recording, False = not
+    autotune_toggled   = pyqtSignal(bool)   # True = autotune on save
 
     UI_UPDATE_INTERVAL_MS: int = 33  # ~30fps
 
@@ -106,6 +107,9 @@ class KaraokeSession(QObject):
         self._recorded_audio: list[np.ndarray] = []
         self._recorded_frames: list = []  # Frame objects from webcam
         self._recorded_sample_rate: int = CONFIG.audio.sample_rate
+
+        # Post-processing toggle: apply auto-tune on save
+        self._autotune_enabled: bool = False
 
     def start(self) -> None:
         """Start the karaoke session."""
@@ -228,17 +232,68 @@ class KaraokeSession(QObject):
                 "total_words":   report.total_words,
             }
 
+            # Apply auto-tune if enabled
+            autotuned_audio = None
+            if self._autotune_enabled:
+                try:
+                    autotuned_audio = self._process_autotune(
+                        audio_samples, sample_rate
+                    )
+                    logger.success("Auto-tune applied to recording")
+                except Exception as e:
+                    logger.error(f"Auto-tune failed: {e}")
+                    # Continue saving raw only
+
             saved_recording = manager.save(
                 song_title=self.song.title,
                 song_artist=self.song.artist,
                 audio_samples=audio_samples,
                 sample_rate=sample_rate,
+                autotuned_audio=autotuned_audio,
                 video_frames=self._recorded_frames or None,
                 score_data=score_data,
             )
             logger.success(f"Recording saved: {saved_recording.folder.name}")
         except Exception as e:
             logger.error(f"Failed to save recording: {e}")
+
+    def _process_autotune(
+        self, audio: np.ndarray, sample_rate: int
+    ) -> np.ndarray:
+        """Apply auto-tune to the recorded audio (post-processing)."""
+        from wrenify.audio.autotune import AutoTuneEngine
+
+        # Determine key from song metadata if available
+        song_key = getattr(self.song, "key", None) or CONFIG.autotune.key
+        song_scale = getattr(self.song, "scale", None) or CONFIG.autotune.scale
+
+        logger.info(f"Auto-tuning recording in {song_key} {song_scale}")
+
+        # Temporarily override config for this song
+        original_key = CONFIG.autotune.key
+        original_scale = CONFIG.autotune.scale
+        CONFIG.autotune.key = song_key
+        CONFIG.autotune.scale = song_scale
+
+        try:
+            engine = AutoTuneEngine()
+            return engine.process_full(audio, sample_rate)
+        finally:
+            # Restore original config
+            CONFIG.autotune.key = original_key
+            CONFIG.autotune.scale = original_scale
+
+    def toggle_autotune(self) -> None:
+        """Toggle whether recording will be auto-tuned on save."""
+        self._autotune_enabled = not self._autotune_enabled
+        self.autotune_toggled.emit(self._autotune_enabled)
+        logger.info(
+            f"Auto-tune {'ENABLED' if self._autotune_enabled else 'DISABLED'} "
+            "for recording"
+        )
+
+    def is_autotune_enabled(self) -> bool:
+        return self._autotune_enabled
 
     def pause(self) -> None:
         """Pause the song; the timeline follows the player."""
