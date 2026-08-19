@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Optional
 
 import cv2
+import numpy as np
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import (
     QBrush,
@@ -30,6 +31,7 @@ from PyQt6.QtWidgets import QWidget
 
 from wrenify.karaoke.session import KaraokeSession
 from wrenify.karaoke.timeline import TrackedWord, WordState
+from wrenify.ui.voice_visualizer import VoiceVisualizer
 
 # Color palette for word states
 STATE_COLORS: dict[WordState, QColor] = {
@@ -69,11 +71,40 @@ class KaraokeView(QWidget):
         # Repaint every tick
         self.session.tick_signal.connect(self._on_tick)
 
+        # Small always-visible visualizer top-right
+        self.mini_viz = VoiceVisualizer(self)
+        self.mini_viz.setFixedHeight(60)
+        self.mini_viz.NUM_BARS = 16  # Fewer bars for compact display
+
+        # Wire session's audio signal to visualizer
+        if hasattr(self.session, 'audio_level_signal'):
+            self.session.audio_level_signal.connect(self._on_mic_level)
+
         # Preload font
         self._lyric_font = QFont("Inter", 32, QFont.Weight.Bold)
         self._lyric_font.setStyleHint(QFont.StyleHint.SansSerif)
 
         self._small_font = QFont("Inter", 14)
+
+    def _on_mic_level(self, rms: float) -> None:
+        """Update the mini visualizer with mic RMS level."""
+        self.mini_viz.push_audio_level(rms)
+        if rms > 0.002:
+            self.mini_viz.set_status("working")
+        else:
+            self.mini_viz.set_status("silent")
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        # Mini visualizer top-right
+        viz_w = 200
+        viz_h = 60
+        self.mini_viz.setGeometry(
+            self.width() - viz_w - 20,
+            50,
+            viz_w,
+            viz_h,
+        )
+        super().resizeEvent(event)
 
     def _on_tick(self, current_time: float) -> None:
         self._current_time = current_time
@@ -195,7 +226,10 @@ class KaraokeView(QWidget):
         # Measure total width to center the line
         metrics = painter.fontMetrics()
         space_width = metrics.horizontalAdvance(" ")
-        word_widths = [metrics.horizontalAdvance(w.text) for w in words]
+        # USE display_text (may be stretched) instead of text
+        word_widths = [
+            metrics.horizontalAdvance(w.display_text) for w in words
+        ]
         total_width = sum(word_widths) + space_width * (len(words) - 1)
 
         x = (self.width() - total_width) // 2
@@ -205,7 +239,8 @@ class KaraokeView(QWidget):
             if dim:
                 color = QColor(color.red(), color.green(), color.blue(), 120)
 
-            self._draw_outlined_text(painter, word.text, x, y, color)
+            # Use display_text here too
+            self._draw_outlined_text(painter, word.display_text, x, y, color)
             x += width + space_width
 
     def _draw_outlined_text(
