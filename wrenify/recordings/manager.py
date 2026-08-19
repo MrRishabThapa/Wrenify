@@ -25,8 +25,10 @@ class RecordingsManager:
     Folder structure:
         recordings/
         └── ed-sheeran_perfect_2025-08-19_11-43-22/
-            ├── audio.wav
-            ├── video.mp4          (optional)
+            ├── audio.wav             (raw mic)
+            ├── audio_autotuned.wav   (pitch-corrected, optional)
+            ├── video.mp4             (webcam + raw audio, optional)
+            ├── video_autotuned.mp4   (webcam + autotuned audio, optional)
             └── meta.json
     """
 
@@ -41,13 +43,21 @@ class RecordingsManager:
         audio_samples: np.ndarray,
         sample_rate: int,
         video_frames: Optional[list] = None,
+        autotuned_audio: Optional[np.ndarray] = None,
         video_fps: float = 24.0,
         score_data: Optional[dict] = None,
     ) -> Recording:
         """
         Save a recording to the library.
 
-        Returns Recording object pointing to saved files.
+        Args:
+            audio_samples: Raw microphone audio
+            autotuned_audio: Optional auto-tuned version of the audio
+            video_frames: Optional webcam frames
+            score_data: Score metadata
+
+        Returns:
+            Recording object pointing to saved files
         """
         now = datetime.utcnow()
         folder_name = self._make_folder_name(song_artist, song_title, now)
@@ -56,19 +66,36 @@ class RecordingsManager:
 
         logger.info(f"Saving recording to: {folder}")
 
+        # Save raw audio
         audio_path = folder / "audio.wav"
         import soundfile as sf
         sf.write(str(audio_path), audio_samples, sample_rate)
-        logger.info(f"Saved audio: {audio_path.name}")
+        logger.info(f"Saved raw audio: {audio_path.name}")
 
+        # Save autotuned audio if provided
+        autotuned_path: Optional[Path] = None
+        if autotuned_audio is not None:
+            autotuned_path = folder / "audio_autotuned.wav"
+            sf.write(str(autotuned_path), autotuned_audio, sample_rate)
+            logger.info(f"Saved autotuned audio: {autotuned_path.name}")
+
+        # Save video(s) if frames provided
         video_path: Optional[Path] = None
+        autotuned_video_path: Optional[Path] = None
+
         if video_frames:
             video_path = folder / "video.mp4"
             self._save_video(
                 video_frames, audio_samples, sample_rate,
                 video_path, video_fps,
             )
-            logger.info(f"Saved video: {video_path.name}")
+
+            if autotuned_audio is not None:
+                autotuned_video_path = folder / "video_autotuned.mp4"
+                self._save_video(
+                    video_frames, autotuned_audio, sample_rate,
+                    autotuned_video_path, video_fps,
+                )
 
         duration = len(audio_samples) / sample_rate
 
@@ -82,7 +109,9 @@ class RecordingsManager:
             duration_sec=duration,
             folder=folder,
             audio_path=audio_path,
+            autotuned_path=autotuned_path,
             video_path=video_path,
+            autotuned_video_path=autotuned_video_path,
             grade=score.get("grade", "N/A"),
             score_pct=score.get("total_score", 0.0),
             correct_count=score.get("correct_count", 0),
@@ -148,11 +177,26 @@ class RecordingsManager:
             logger.error(f"Delete failed: {e}")
             return False
 
-    def export_to(self, recording: Recording, destination: Path) -> Path:
-        """Copy recording (video preferred) to external destination."""
+    def export_to(
+        self, recording: Recording, destination: Path, version: str = "raw"
+    ) -> Path:
+        """Copy recording (video preferred) to external destination.
+
+        Args:
+            version: "raw" or "autotuned"
+        """
         destination = Path(destination)
 
-        source = recording.video_path if recording.has_video else recording.audio_path
+        if version == "autotuned":
+            source = (
+                recording.autotuned_video_path
+                if recording.has_autotuned_video
+                else recording.autotuned_path
+            )
+            if source is None:
+                raise ValueError("Recording has no auto-tuned version")
+        else:
+            source = recording.video_path if recording.has_video else recording.audio_path
 
         # Preserve extension of source
         if destination.suffix == "":
