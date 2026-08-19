@@ -26,7 +26,6 @@ from wrenify.songs.lrc_generator import LRCGenerator, LRCGeneratorConfig
 from wrenify.songs.song import Song
 from wrenify.songs.vocal_separator import VocalSeparator
 
-
 SONGS_DIR = ROOT_DIR / "songs"
 
 
@@ -153,9 +152,10 @@ class FullSongImporter:
 
 if __name__ == "__main__":
     import sys
+
     from rich.console import Console
-    from rich.prompt import Prompt, Confirm
-    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+    from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+    from rich.prompt import Confirm, Prompt
 
     console = Console()
     console.print("\n[bold cyan]Wrenify Full Song Import[/bold cyan]")
