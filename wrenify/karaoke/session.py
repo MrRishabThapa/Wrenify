@@ -14,8 +14,10 @@ Emits Qt signals for UI updates.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
+import numpy as np
 from loguru import logger
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
@@ -47,6 +49,7 @@ class KaraokeSession(QObject):
     tick_signal     = pyqtSignal(float)
     finished_signal = pyqtSignal(ScoreReport)
     audio_level_signal = pyqtSignal(float)  # RMS 0.0 to 1.0
+    recording_toggled  = pyqtSignal(bool)   # True = recording, False = not
 
     UI_UPDATE_INTERVAL_MS: int = 33  # ~30fps
 
@@ -97,6 +100,11 @@ class KaraokeSession(QObject):
 
         self._running = False
         self._song_started = False
+
+        # Optional performance recording (opt-in via R key)
+        self._is_recording = False
+        self._recorded_audio: list[np.ndarray] = []
+        self._recorded_frames: list = []  # Frame objects from webcam
 
     def start(self) -> None:
         """Start the karaoke session."""
@@ -199,10 +207,56 @@ class KaraokeSession(QObject):
         self.timeline.update_word_states(current_time)
         self.tick_signal.emit(current_time)
 
+        # Record webcam frame if recording
+        if self._is_recording and self.webcam is not None:
+            frame = self.webcam.get_latest_frame()
+            if frame is not None:
+                self._recorded_frames.append(frame)
+
         # Auto-stop when the song finishes playing
         if self._song_started and self.player.is_finished():
             logger.info("Song finished, stopping session")
             self.stop()
+
+    def toggle_recording(self) -> None:
+        """Toggle recording on/off during session."""
+        self._is_recording = not self._is_recording
+        self.recording_toggled.emit(self._is_recording)
+        if self._is_recording:
+            logger.info("Recording STARTED")
+            self._recorded_audio.clear()
+            self._recorded_frames.clear()
+        else:
+            logger.info("Recording STOPPED")
+
+    def is_recording(self) -> bool:
+        return self._is_recording
+
+    def export_recording(self, output_path: Optional[Path] = None) -> Optional[Path]:
+        """Export recorded audio + webcam frames as MP4."""
+        if not self._recorded_audio:
+            logger.warning("Nothing recorded")
+            return None
+
+        if not self._recorded_frames:
+            logger.warning("No webcam frames captured — nothing to export")
+            return None
+
+        import numpy as np
+        from wrenify.video.exporter import VideoExporter
+
+        audio = np.concatenate(self._recorded_audio)
+        exporter = VideoExporter(
+            output_dir=output_path.parent if output_path else None
+        )
+
+        song_name = self.song.title.lower().replace(" ", "_")
+        return exporter.export(
+            frames=self._recorded_frames,
+            audio=audio,
+            sample_rate=self.audio_capture.cfg.sample_rate if self.audio_capture else 44100,
+            output_name=output_path.stem if output_path else f"wrenify_{song_name}",
+        )
 
     def _forward_audio(self) -> None:
         """Pull audio chunks from capture and forward to streamer."""
@@ -217,6 +271,10 @@ class KaraokeSession(QObject):
         import numpy as np
         rms = float(np.sqrt(np.mean(chunk ** 2)))
         self.audio_level_signal.emit(rms)
+
+        # Record if enabled
+        if self._is_recording:
+            self._recorded_audio.append(chunk.copy())
 
         # Forward to Whisper
         if self.streamer is not None:
