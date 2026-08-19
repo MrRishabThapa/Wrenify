@@ -1,0 +1,13 @@
+{
+  "title": "Temper City - Self Aware",
+  "artist": "LatinHype",
+  "album": null,
+  "duration": 181.69614512471657,
+  "instrumental_file": "instrumental.wav",
+  "vocals_file": "vocals.wav",
+  "lyrics_file": "lyrics.lrc",
+  "original_file": "original.wav",
+  "separation_model": "htdemucs",
+  "processing_time": 173.06654065899966,
+  "imported_at": "2026-08-19T05:17:16.993720"
+}

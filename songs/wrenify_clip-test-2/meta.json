@@ -1,0 +1,13 @@
+{
+  "title": "Clip Test 2",
+  "artist": "Wrenify",
+  "album": null,
+  "duration": 10.0,
+  "instrumental_file": "instrumental.wav",
+  "vocals_file": "vocals.wav",
+  "lyrics_file": "lyrics.lrc",
+  "original_file": "original.wav",
+  "separation_model": "htdemucs",
+  "processing_time": 21.247972131997813,
+  "imported_at": "2026-08-19T08:48:30.442627"
+}

@@ -1,0 +1,13 @@
+{
+  "title": "Perfect",
+  "artist": "Ed sheeran",
+  "album": "DIVIDE",
+  "duration": 263.68580498866214,
+  "instrumental_file": "instrumental.wav",
+  "vocals_file": "vocals.wav",
+  "lyrics_file": "lyrics.lrc",
+  "original_file": "original.wav",
+  "separation_model": "htdemucs",
+  "processing_time": 276.2466380500009,
+  "imported_at": "2026-08-19T07:32:49.350910"
+}
