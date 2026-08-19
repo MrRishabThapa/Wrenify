@@ -12,6 +12,7 @@ Words change color based on their state:
 
 from __future__ import annotations
 
+import time
 from typing import Optional
 
 import cv2
@@ -67,6 +68,10 @@ class KaraokeView(QWidget):
 
         self.setMinimumSize(960, 540)
         self.setStyleSheet("background: #0A0A15;")
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)  # For arrow keys
+
+        self._offset_toast: Optional[str] = None
+        self._offset_toast_until: float = 0.0
 
         # Repaint every tick
         self.session.tick_signal.connect(self._on_tick)
@@ -105,6 +110,34 @@ class KaraokeView(QWidget):
             viz_h,
         )
         super().resizeEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        key = event.key()
+
+        if key == Qt.Key.Key_Left:
+            # Shift lyrics 0.5s EARLIER
+            new_offset = self.session.timeline.offset_sec - 0.5
+            self.session.timeline.set_offset(new_offset)
+            self._show_offset_toast(new_offset)
+        elif key == Qt.Key.Key_Right:
+            # Shift lyrics 0.5s LATER
+            new_offset = self.session.timeline.offset_sec + 0.5
+            self.session.timeline.set_offset(new_offset)
+            self._show_offset_toast(new_offset)
+        elif key == Qt.Key.Key_Space:
+            # Pause/resume
+            if self.session.player.is_playing():
+                self.session.pause()
+            else:
+                self.session.resume()
+        else:
+            super().keyPressEvent(event)
+
+    def _show_offset_toast(self, offset: float) -> None:
+        """Show a temporary toast with current offset."""
+        self._offset_toast = f"Offset: {offset:+.1f}s (← / → to adjust)"
+        self._offset_toast_until = time.monotonic() + 2.0
+        self.update()
 
     def _on_tick(self, current_time: float) -> None:
         self._current_time = current_time
@@ -148,7 +181,23 @@ class KaraokeView(QWidget):
         # 5. Draw score bar
         self._draw_score(painter)
 
+        # 6. Draw offset toast if active
+        self._draw_offset_toast(painter)
+
         painter.end()
+
+    def _draw_offset_toast(self, painter: QPainter) -> None:
+        """Show a temporary toast with current lyrics offset."""
+        if self._offset_toast is None:
+            return
+        if time.monotonic() > self._offset_toast_until:
+            self._offset_toast = None
+            return
+
+        painter.setFont(QFont("Inter", 18, QFont.Weight.Bold))
+        painter.setPen(QColor(255, 215, 0))
+        painter.fillRect(20, 20, 340, 40, QColor(0, 0, 0, 180))
+        painter.drawText(30, 47, self._offset_toast)
 
     def _draw_webcam(self, painter: QPainter) -> None:
         if self._current_pixmap is None:
