@@ -46,6 +46,7 @@ class KaraokeSession(QObject):
 
     tick_signal     = pyqtSignal(float)
     finished_signal = pyqtSignal(ScoreReport)
+    audio_level_signal = pyqtSignal(float)  # RMS 0.0 to 1.0
 
     UI_UPDATE_INTERVAL_MS: int = 33  # ~30fps
 
@@ -183,10 +184,20 @@ class KaraokeSession(QObject):
 
     def _forward_audio(self) -> None:
         """Pull audio chunks from capture and forward to streamer."""
-        if self.audio_capture is None or self.streamer is None:
+        if self.audio_capture is None:
             return
+
         chunk = self.audio_capture.get_chunk(timeout=0.001)
-        if chunk is not None:
+        if chunk is None:
+            return
+
+        # Emit level for UI visualizer
+        import numpy as np
+        rms = float(np.sqrt(np.mean(chunk ** 2)))
+        self.audio_level_signal.emit(rms)
+
+        # Forward to Whisper
+        if self.streamer is not None:
             self.streamer.push_audio(chunk)
 
     def _on_words_recognized(self, words: list[Word]) -> None:
