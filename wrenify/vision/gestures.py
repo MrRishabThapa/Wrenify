@@ -1,15 +1,14 @@
 """
-Wrenify — Vision: hand gesture detection via skin-color analysis.
+Wrenify — Hand gesture recognition via MediaPipe Hands.
 
-Lightweight CPU-only detector (no MediaPipe) that segments skin-tone
-blobs and classifies the largest one's pose:
+MediaPipe uses ML models trained specifically for hand tracking,
+so it doesn't confuse faces or other skin-colored regions with hands.
 
-    OPEN_PALM — large skin area (hand open)
-    HAND      — skin present but pose ambiguous (e.g. fist, partial)
-    NONE      — no significant skin blob
+Detects two gestures:
+- OPEN_PALM: all four fingers extended
+- CLOSED_FIST: all four fingers curled
 
-Each detection returns a bounding box (x, y, w, h) in frame pixel
-coordinates so the UI can draw visual feedback over the webcam feed.
+Runs on CPU at ~30 fps on modest hardware.
 """
 
 from __future__ import annotations
@@ -19,97 +18,187 @@ from enum import Enum
 from typing import Optional
 
 import cv2
+import mediapipe as mp
 import numpy as np
+from loguru import logger
 
 
 class HandGesture(Enum):
-    """Pose classification of the largest skin blob."""
-
-    NONE      = "none"        # No significant skin visible
-    HAND      = "hand"        # Skin present, pose not identified
-    OPEN_PALM = "open_palm"   # Open palm confirmed
+    NONE        = "none"
+    OPEN_PALM   = "open_palm"
+    CLOSED_FIST = "closed_fist"
+    UNKNOWN     = "unknown"
 
 
 @dataclass
 class GestureResult:
-    """Result of a single gesture detection."""
-
-    gesture:      HandGesture
-    confidence:   float = 0.0
-    bounding_box: Optional[tuple[int, int, int, int]] = None  # x, y, w, h
-    skin_ratio:   float = 0.0                                 # 0.0 to 1.0
+    gesture:        HandGesture
+    confidence:     float
+    hand_landmarks: Optional[object] = None
+    bounding_box:   Optional[tuple[int, int, int, int]] = None
 
 
 class GestureDetector:
     """
-    Detects hand gestures from a BGR frame using an HSV skin mask.
+    Real-time hand gesture detector using MediaPipe.
 
-    The largest skin-colored contour provides the bounding box;
-    the fraction of skin pixels in the frame classifies the pose.
+    Only detects actual hands (not faces, arms, or skin patches).
+    Provides accurate bounding boxes centered on the hand.
     """
 
-    # HSV skin range
-    SKIN_LOWER = np.array([0, 40, 40])
-    SKIN_UPPER = np.array([25, 255, 255])
-
-    PALM_RATIO:  float = 0.12   # >= this => open palm
-    MIN_BLOB_AREA: int = 250    # px; smaller blobs are noise
+    MIN_DETECTION_CONFIDENCE: float = 0.6
+    MIN_TRACKING_CONFIDENCE:  float = 0.5
 
     def __init__(self) -> None:
-        self._kernel_open = np.ones((5, 5), np.uint8)
-        self._kernel_close = np.ones((15, 15), np.uint8)
+        self.mp_hands = mp.solutions.hands
+        self.hands = self.mp_hands.Hands(
+            static_image_mode=False,
+            max_num_hands=1,
+            min_detection_confidence=self.MIN_DETECTION_CONFIDENCE,
+            min_tracking_confidence=self.MIN_TRACKING_CONFIDENCE,
+        )
+        self.mp_drawing = mp.solutions.drawing_utils
+        logger.info("MediaPipe Hands initialized")
 
     def detect(self, frame_bgr: np.ndarray) -> GestureResult:
-        """
-        Classify the largest skin blob in the frame.
+        """Detect a hand in the frame and classify its pose."""
+        # MediaPipe needs RGB
+        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        frame_rgb.flags.writeable = False
 
-        Args:
-            frame_bgr: BGR image, e.g. (480, 640, 3)
+        results = self.hands.process(frame_rgb)
 
-        Returns:
-            GestureResult with gesture, confidence, bounding box
-            (None when nothing significant is detected), and skin ratio.
-        """
-        hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(hsv, self.SKIN_LOWER, self.SKIN_UPPER)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self._kernel_open)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self._kernel_close)
+        if not results.multi_hand_landmarks:
+            return GestureResult(gesture=HandGesture.NONE, confidence=0.0)
 
-        skin_ratio = float(np.count_nonzero(mask)) / float(mask.size)
-
-        bbox: Optional[tuple[int, int, int, int]] = None
-        contours, _ = cv2.findContours(
-            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
-        if contours:
-            largest = max(contours, key=cv2.contourArea)
-            if cv2.contourArea(largest) >= self.MIN_BLOB_AREA:
-                x, y, w, h = cv2.boundingRect(largest)
-                bbox = (int(x), int(y), int(w), int(h))
-
-        if bbox is None:
-            return GestureResult(
-                gesture=HandGesture.NONE,
-                confidence=0.0,
-                bounding_box=None,
-                skin_ratio=skin_ratio,
-            )
-
-        if skin_ratio >= self.PALM_RATIO:
-            return GestureResult(
-                gesture=HandGesture.OPEN_PALM,
-                confidence=min(1.0, skin_ratio * 3.0),
-                bounding_box=bbox,
-                skin_ratio=skin_ratio,
-            )
+        landmarks = results.multi_hand_landmarks[0]
+        gesture, confidence = self._classify_gesture(landmarks)
+        bbox = self._get_bounding_box(landmarks, frame_bgr.shape)
 
         return GestureResult(
-            gesture=HandGesture.HAND,
-            confidence=min(1.0, skin_ratio * 6.0),
+            gesture=gesture,
+            confidence=confidence,
+            hand_landmarks=landmarks,
             bounding_box=bbox,
-            skin_ratio=skin_ratio,
         )
 
+    def _classify_gesture(self, landmarks) -> tuple[HandGesture, float]:
+        """Classify hand pose based on finger extension.
+
+        MediaPipe hand model has 21 landmarks:
+            0: wrist
+            4: thumb tip
+            8: index finger tip     — compare with 6 (index PIP joint)
+            12: middle finger tip   — compare with 10
+            16: ring finger tip     — compare with 14
+            20: pinky tip           — compare with 18
+
+        A finger is "extended" if its tip is higher (smaller y) than
+        its middle joint.
+        """
+        lm = landmarks.landmark
+
+        # Check which fingers are extended
+        index_ext  = lm[8].y  < lm[6].y  - 0.02
+        middle_ext = lm[12].y < lm[10].y - 0.02
+        ring_ext   = lm[16].y < lm[14].y - 0.02
+        pinky_ext  = lm[20].y < lm[18].y - 0.02
+
+        extended = sum([index_ext, middle_ext, ring_ext, pinky_ext])
+
+        if extended >= 3:
+            return HandGesture.OPEN_PALM, 0.9
+        elif extended == 0:
+            return HandGesture.CLOSED_FIST, 0.9
+        else:
+            return HandGesture.UNKNOWN, 0.5
+
+    def _get_bounding_box(
+        self,
+        landmarks,
+        frame_shape: tuple[int, ...],
+    ) -> tuple[int, int, int, int]:
+        """Get bounding box tight around the hand."""
+        h, w = frame_shape[:2]
+        xs = [lm.x * w for lm in landmarks.landmark]
+        ys = [lm.y * h for lm in landmarks.landmark]
+
+        x_min, x_max = int(min(xs)), int(max(xs))
+        y_min, y_max = int(min(ys)), int(max(ys))
+
+        # Add padding
+        padding = 20
+        x_min = max(0, x_min - padding)
+        y_min = max(0, y_min - padding)
+        x_max = min(w, x_max + padding)
+        y_max = min(h, y_max + padding)
+
+        return (x_min, y_min, x_max - x_min, y_max - y_min)
+
     def close(self) -> None:
-        """Release any resources (no-op for the skin-color detector)."""
-        pass
+        self.hands.close()
+
+
+# ────────────────────── Standalone test ──────────────────────
+
+if __name__ == "__main__":
+    import time
+
+    from rich.console import Console
+
+    from wrenify.video.camera import WebcamCapture
+
+    console = Console()
+    console.print("\n[bold cyan]MediaPipe Hand Gesture Test[/bold cyan]")
+    console.print(
+        "[yellow]Show hand: open palm, fist. Press Q to quit[/yellow]\n"
+    )
+
+    detector = GestureDetector()
+
+    with WebcamCapture() as cam:
+        time.sleep(0.5)
+        window = "Gesture Test"
+        cv2.namedWindow(window, cv2.WINDOW_NORMAL)
+
+        while True:
+            frame_data = cam.get_latest_frame()
+            if frame_data is None:
+                time.sleep(0.01)
+                continue
+
+            frame = cv2.flip(frame_data.image.copy(), 1)
+            result = detector.detect(frame)
+
+            # Draw bounding box
+            if result.bounding_box:
+                x, y, w, h = result.bounding_box
+                color = {
+                    HandGesture.OPEN_PALM:   (57, 255, 20),
+                    HandGesture.CLOSED_FIST: (57, 255, 180),
+                    HandGesture.UNKNOWN:     (0, 165, 255),
+                    HandGesture.NONE:        (128, 128, 128),
+                }[result.gesture]
+                cv2.rectangle(frame, (x, y), (x + w, y + h), color, 3)
+
+            # Draw landmarks
+            if result.hand_landmarks:
+                detector.mp_drawing.draw_landmarks(
+                    frame, result.hand_landmarks,
+                    detector.mp_hands.HAND_CONNECTIONS,
+                )
+
+            # Label
+            cv2.putText(
+                frame,
+                f"{result.gesture.value.upper()} {result.confidence:.0%}",
+                (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0,
+                (255, 255, 255), 2,
+            )
+
+            cv2.imshow(window, frame)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
+
+        cv2.destroyAllWindows()
+        detector.close()
