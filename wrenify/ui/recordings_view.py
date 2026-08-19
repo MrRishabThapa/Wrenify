@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -12,7 +11,6 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QGridLayout,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QMessageBox,
     QScrollArea,
@@ -107,29 +105,26 @@ class RecordingsView(QWidget):
             row, col = divmod(i, 3)
             self.grid_layout.addWidget(card, row, col)
 
-    def _play_recording(self, recording: Recording, autotuned: bool = False) -> None:
-        """Open recording in system default player."""
-        if autotuned:
-            target = (
-                recording.autotuned_video_path
-                if recording.has_autotuned_video
-                else recording.autotuned_path
+    def _play_recording(self, recording: Recording, version: str) -> None:
+        """Play a specific version of the recording."""
+        version_map = {
+            "voice_raw":       recording.voice_raw_path,
+            "voice_autotuned": recording.voice_autotuned_path,
+            "mixed_raw":       recording.mixed_raw_path,
+            "mixed_autotuned": recording.mixed_autotuned_path,
+        }
+
+        target = version_map.get(version)
+        if not target or not target.exists():
+            QMessageBox.warning(
+                self, "Not Available",
+                f"The '{version}' version doesn't exist for this recording.",
             )
-            if target is None:
-                QMessageBox.warning(
-                    self, "No Auto-Tuned Version",
-                    "This recording has no auto-tuned audio.",
-                )
-                return
-        else:
-            target = (
-                recording.video_path
-                if recording.has_video
-                else recording.audio_path
-            )
+            return
 
         try:
             subprocess.Popen(["xdg-open", str(target)])
+            logger.info(f"Playing: {target.name}")
         except Exception as e:
             QMessageBox.warning(
                 self, "Playback Failed",
@@ -137,42 +132,82 @@ class RecordingsView(QWidget):
             )
 
     def _export_recording(self, recording: Recording) -> None:
-        """Export to a user-chosen destination via file dialog."""
-        version = "raw"
-        if recording.has_autotuned:
-            options = ["Raw", "Auto-Tuned"]
-            choice, ok = QInputDialog.getItem(
-                self,
-                "Export Version",
-                "Which version do you want to export?",
-                options,
-                0,
-                False,
-            )
-            if not ok:
-                return
-            version = "raw" if choice == "Raw" else "autotuned"
+        """Choose which version to export."""
+        # Build list of available versions
+        options = []
+        version_paths = {}
 
-        if version == "autotuned":
-            source = (
-                recording.autotuned_video_path
-                if recording.has_autotuned_video
-                else recording.autotuned_path
+        if recording.has_mixed_raw:
+            options.append("With music — Raw voice")
+            version_paths["With music — Raw voice"] = recording.mixed_raw_path
+
+        if recording.has_mixed_autotuned:
+            options.append("With music — Auto-tuned ✨")
+            version_paths["With music — Auto-tuned ✨"] = (
+                recording.mixed_autotuned_path
             )
-        else:
-            source = (
-                recording.video_path
-                if recording.has_video
-                else recording.audio_path
+
+        if recording.has_voice_raw:
+            options.append("Voice only — Raw")
+            version_paths["Voice only — Raw"] = recording.voice_raw_path
+
+        if recording.has_voice_autotuned:
+            options.append("Voice only — Auto-tuned ✨")
+            version_paths["Voice only — Auto-tuned ✨"] = (
+                recording.voice_autotuned_path
             )
+
+        if recording.video_raw_path and recording.video_raw_path.exists():
+            options.append("Video — Raw")
+            version_paths["Video — Raw"] = recording.video_raw_path
+
+        if (
+            recording.video_autotuned_path
+            and recording.video_autotuned_path.exists()
+        ):
+            options.append("Video — Auto-tuned ✨")
+            version_paths["Video — Auto-tuned ✨"] = (
+                recording.video_autotuned_path
+            )
+
+        if not options:
+            QMessageBox.warning(
+                self, "Nothing to Export", "No versions available."
+            )
+            return
+
+        from PyQt6.QtWidgets import QInputDialog
+
+        # Default: mixed_autotuned if available, else mixed_raw
+        default_idx = 0
+        if "With music — Auto-tuned ✨" in options:
+            default_idx = options.index("With music — Auto-tuned ✨")
+        elif "With music — Raw voice" in options:
+            default_idx = options.index("With music — Raw voice")
+
+        choice, ok = QInputDialog.getItem(
+            self,
+            "Export Version",
+            f"Which version to export?\n\n({recording.display_name})",
+            options,
+            default_idx,
+            False,
+        )
+        if not ok:
+            return
+
+        source = version_paths[choice]
         suffix = source.suffix
 
-        default_name = (
-            f"{recording.song_artist} - {recording.song_title}"
-            + (" (Auto-Tuned)" if version == "autotuned" else "")
-            + suffix
+        # Build filename
+        safe_title = recording.song_title.replace("/", "_")
+        safe_artist = recording.song_artist.replace("/", "_")
+        version_tag = (
+            choice.replace(" ", "_")
+            .replace("—", "-")
+            .replace("✨", "autotuned")
         )
-        default_name = default_name.replace("/", "_")
+        default_name = f"{safe_artist}_-_{safe_title}_{version_tag}{suffix}"
 
         target, _ = QFileDialog.getSaveFileName(
             self,
@@ -185,11 +220,9 @@ class RecordingsView(QWidget):
             return
 
         try:
-            if version == "autotuned":
-                shutil.copy2(source, Path(target))
-                logger.success(f"Exported autotuned recording to: {target}")
-            else:
-                self.manager.export_to(recording, Path(target))
+            import shutil
+
+            shutil.copy(source, target)
             QMessageBox.information(self, "Exported", f"Saved to {target}")
         except Exception as e:
             QMessageBox.critical(self, "Export Failed", str(e))
