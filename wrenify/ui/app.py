@@ -17,7 +17,6 @@ from PyQt6.QtWidgets import (
 )
 
 from wrenify.core.config import CONFIG
-from wrenify.karaoke.scorer import ScoreReport
 from wrenify.karaoke.session import KaraokeSession
 from wrenify.songs.song import Song
 from wrenify.ui.import_view import ImportView
@@ -25,7 +24,7 @@ from wrenify.ui.karaoke_view import KaraokeView
 from wrenify.ui.library_view import LibraryView
 from wrenify.ui.pre_karaoke_view import PreKaraokeView
 from wrenify.ui.recordings_view import RecordingsView
-from wrenify.ui.results_view import ResultsView
+from wrenify.ui.results_view import SessionEndView
 from wrenify.ui.theme import THEME, global_stylesheet
 from wrenify.ui.widgets import (
     LOGO_PATH,
@@ -49,7 +48,7 @@ class MainWindow(QMainWindow):
 
         self.session: Optional[KaraokeSession] = None
         self.karaoke_view: Optional[KaraokeView] = None
-        self.results_view: Optional[ResultsView] = None
+        self.end_view: Optional[SessionEndView] = None
         self._pre_view: Optional[PreKaraokeView] = None
         self._pending_song: Optional[Song] = None
         self._status_labels: list[QLabel] = []
@@ -287,18 +286,29 @@ class MainWindow(QMainWindow):
 
         self.session = KaraokeSession(self._pending_song, parent=self)
         self.karaoke_view = KaraokeView(self.session)
-        self.session.finished_signal.connect(self._show_results)
+        self.session.finished_signal.connect(self._show_session_end)
         self.setCentralWidget(self.karaoke_view)
         self.session.start()
 
-    def _show_results(self, report: ScoreReport) -> None:
-        """Show results screen after session ends."""
-        self.results_view = ResultsView(report)
-        self.results_view.retry_signal.connect(self._retry)
-        self.results_view.exit_signal.connect(self._back_to_menu)
-        self.setCentralWidget(self.results_view)
+    def _show_session_end(self) -> None:
+        """Called when karaoke session finishes."""
+        recording_was_saved = bool(
+            self._pending_song
+            and self.session is not None
+            and self.session._recorded_audio
+        )
 
-    def _retry(self) -> None:
+        self.end_view = SessionEndView(
+            song=self._pending_song,
+            recording_saved=recording_was_saved,
+        )
+        self.end_view.sing_again_requested.connect(self._sing_again)
+        self.end_view.library_requested.connect(self._show_library)
+        self.end_view.recordings_requested.connect(self._show_recordings)
+
+        self.setCentralWidget(self.end_view)
+
+    def _sing_again(self) -> None:
         """Sing the same song again, straight into the karaoke view."""
         if self._pending_song is not None:
             self._start_karaoke_session()
