@@ -50,9 +50,9 @@ yt-dlp = "^2026.7.4"
 mediapipe = "0.10.21"
 
 # Vocal separation (CPU-only torch — no CUDA on this machine)
-demucs = "^2.0.0"
 torch = {version = "^2.13.0", source = "pytorch-cpu"}
 torchaudio = {version = "^2.11.0", source = "pytorch-cpu"}
+demucs = ">=4.0.0"
 
 [[tool.poetry.source]]
 name = "pytorch-cpu"
