@@ -13,6 +13,7 @@ Key design:
 from __future__ import annotations
 
 import os
+import platform
 import threading
 import time
 from collections import deque
@@ -66,8 +67,8 @@ class WebcamCapture:
         self._start_time: float = 0.0
         self._lock = threading.Lock()
 
-    def _open_camera(self) -> cv2.VideoCapture:
-        """Open the webcam with detailed diagnostics on failure."""
+    def _check_linux_video_devices(self) -> None:
+        """Diagnostics for Linux /dev/video* devices (Linux only)."""
         # Diagnostic: check /dev/video devices exist
         video_devices = sorted(Path("/dev").glob("video*"))
         if not video_devices:
@@ -108,19 +109,30 @@ class WebcamCapture:
         except Exception:
             pass  # fuser not available or timed out
 
-        # Try to open
-        logger.info(f"Attempting to open webcam at index {self.cfg.webcam_index}")
+    def _open_camera(self) -> cv2.VideoCapture:
+        """Open the webcam with detailed diagnostics on failure."""
+        logger.info(f"Opening webcam at index {self.cfg.webcam_index}")
+
+        # Platform-specific pre-checks
+        system = platform.system()
+        if system == "Linux":
+            self._check_linux_video_devices()
+
+        # Default backend (works on all platforms)
         cap = cv2.VideoCapture(self.cfg.webcam_index)
 
+        # Fallback backends only if default fails
         if not cap.isOpened():
-            # Try alternative backends
-            logger.warning("Default backend failed, trying V4L2 explicitly")
-            cap = cv2.VideoCapture(self.cfg.webcam_index, cv2.CAP_V4L2)
+            if system == "Linux":
+                logger.warning("Default backend failed, trying V4L2")
+                cap = cv2.VideoCapture(self.cfg.webcam_index, cv2.CAP_V4L2)
+            elif system == "Windows":
+                logger.warning("Default backend failed, trying DirectShow")
+                cap = cv2.VideoCapture(self.cfg.webcam_index, cv2.CAP_DSHOW)
 
         if not cap.isOpened():
             logger.error(
                 f"Cannot open webcam at index {self.cfg.webcam_index}. "
-                f"Devices exist: {[str(d) for d in video_devices]}. "
                 f"Try: cheese  OR  ffplay /dev/video0  to test outside Wrenify."
             )
             raise RuntimeError(f"cv2.VideoCapture({self.cfg.webcam_index}) failed")
