@@ -1,10 +1,8 @@
 """Wrenify — application window, theme and entry point."""
 
 import sys
-from pathlib import Path
 from typing import Optional
 
-from loguru import logger
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
@@ -22,7 +20,9 @@ from wrenify.core.config import CONFIG
 from wrenify.karaoke.scorer import ScoreReport
 from wrenify.karaoke.session import KaraokeSession
 from wrenify.songs.song import Song
+from wrenify.ui.import_view import ImportView
 from wrenify.ui.karaoke_view import KaraokeView
+from wrenify.ui.library_view import LibraryView
 from wrenify.ui.pre_karaoke_view import PreKaraokeView
 from wrenify.ui.results_view import ResultsView
 from wrenify.ui.theme import THEME, global_stylesheet
@@ -34,6 +34,7 @@ from wrenify.ui.widgets import (
     WelcomePage,
 )
 from wrenify.ui.widgets.glass import CaptionLabel, GradientBackground
+
 
 class MainWindow(QMainWindow):
     """Main application window: sidebar navigation and stacked pages."""
@@ -92,6 +93,8 @@ class MainWindow(QMainWindow):
 
         self._add_section(layout, "WORKSPACE")
         self._add_nav(layout, "Studio", 0)
+        self._add_nav(layout, "Library", 5)
+        self._add_nav(layout, "Import", 6)
         self._add_section(layout, "VOICE")
         self._add_nav(layout, "Auto-Tune", 1)
         self._add_nav(layout, "Speech", 2)
@@ -120,14 +123,25 @@ class MainWindow(QMainWindow):
 
     def _select_nav(self, index: int) -> None:
         """Keep the glass navigation state aligned with the active page."""
+        if index == 5:
+            self._show_library()
+            return
+        if index == 6:
+            self._show_import()
+            return
         self.stack.setCurrentIndex(index)
         button = self._nav_group.button(index)
         if button is not None:
             button.setChecked(True)
 
     def _build_pages(self) -> None:
+        self.home_view = WelcomePage(
+            self._show_library,
+            library_callback=self._show_library,
+            import_callback=self._show_import,
+        )
         pages = [
-            WelcomePage(self.open_song_dialog),
+            self.home_view,
             PlaceholderPage(
                 "Auto-Tune",
                 "Real-time pitch correction for your voice.",
@@ -171,6 +185,55 @@ class MainWindow(QMainWindow):
         for page in pages:
             self.stack.addWidget(page)
 
+        # Library view — grid of song cards
+        self.library_view = LibraryView()
+        self.library_view.song_selected.connect(self._on_song_selected)
+        self.library_view.import_requested.connect(self._show_import)
+        self.stack.addWidget(self.library_view)
+
+        # Import view — URL paste + live progress log
+        self.import_view = ImportView()
+        self.import_view.back_requested.connect(self._show_library)
+        self.import_view.import_completed.connect(self.library_view.reload_songs)
+        self.import_view.import_completed.connect(self._show_library)
+        self.stack.addWidget(self.import_view)
+
+    def _show_home(self) -> None:
+        """Show the Studio landing page."""
+        self.stack.setCurrentWidget(self.home_view)
+        self._check_nav(0)
+
+    def _show_library(self) -> None:
+        """Show the in-app song library (rescanning first)."""
+        self.library_view.reload_songs()
+        self.stack.setCurrentWidget(self.library_view)
+        self._check_nav(5)
+
+    def _show_import(self) -> None:
+        """Show the import screen."""
+        self.stack.setCurrentWidget(self.import_view)
+        self._check_nav(6)
+
+    def _check_nav(self, index: int) -> None:
+        """Synchronize sidebar state after programmatic navigation."""
+        button = self._nav_group.button(index)
+        if button is not None:
+            button.setChecked(True)
+
+    def _on_song_selected(self, song: Song) -> None:
+        """Launch karaoke with the selected song from library."""
+        from PyQt6.QtWidgets import QMessageBox
+
+        reply = QMessageBox.question(
+            self,
+            "Ready to sing?",
+            f"Karaoke: {song.display_name}\n\n"
+            "Put on headphones for best results.\nContinue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.launch_karaoke_with_song(song)
+
     def _build_status_bar(self) -> None:
         status = self.statusBar()
         for label in self._status_labels:
@@ -191,93 +254,6 @@ class MainWindow(QMainWindow):
             label = QLabel(text)
             status.addPermanentWidget(label)
             self._status_labels.append(label)
-
-    def launch_karaoke(self, lrc_path: Path) -> None:
-        """
-        DEPRECATED: start karaoke from an .lrc file.
-
-        Prompts for an instrumental to pair with the lyrics, then
-        continues through the normal song flow. Prefer
-        open_song_dialog() or launch_karaoke_with_song().
-        """
-        from PyQt6.QtWidgets import QFileDialog
-
-        from wrenify.songs.song import Song
-
-        logger.warning(
-            "launch_karaoke(lrc_path) is deprecated — "
-            "use open_song_dialog() or launch_karaoke_with_song()"
-        )
-
-        instrumental_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Instrumental for this LRC",
-            str(lrc_path.parent),
-            "Audio Files (*.mp3 *.wav *.ogg *.flac)",
-        )
-        if not instrumental_path:
-            return
-
-        song = Song.from_files(
-            instrumental=Path(instrumental_path),
-            lyrics=lrc_path,
-        )
-        self.launch_karaoke_with_song(song)
-
-    def open_song_dialog(self) -> None:
-        """Show file pickers to select instrumental + lyrics, then pre-view."""
-        from PyQt6.QtWidgets import QFileDialog, QMessageBox
-
-        from wrenify.songs.song import Song
-
-        # Ask for instrumental
-        instrumental_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Instrumental Audio",
-            str(Path.home()),
-            "Audio Files (*.mp3 *.wav *.ogg *.flac)",
-        )
-        if not instrumental_path:
-            return
-
-        # Ask for lyrics
-        lyrics_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Lyrics File",
-            str(Path(instrumental_path).parent),
-            "LRC Files (*.lrc)",
-        )
-        if not lyrics_path:
-            return
-
-        # Guess title/artist from the instrumental filename
-        stem = Path(instrumental_path).stem
-        parts = stem.replace("_", " ").replace("-", " ").split()
-        title = " ".join(parts).title() if parts else "Unknown"
-
-        song = Song.from_files(
-            instrumental=Path(instrumental_path),
-            lyrics=Path(lyrics_path),
-            title=title,
-            artist="Unknown",
-        )
-
-        # Headphone reminder
-        reply = QMessageBox.question(
-            self,
-            "Headphones Recommended",
-            (
-                "For best results, please wear HEADPHONES.\n\n"
-                "Otherwise your mic will pick up the song audio "
-                "and confuse the speech recognition.\n\n"
-                "Continue?"
-            ),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-
-        self.launch_karaoke_with_song(song)
 
     def launch_karaoke_with_song(self, song: Song) -> None:
         """Show the ready screen for a fully-loaded Song."""
