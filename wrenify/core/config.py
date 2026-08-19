@@ -97,8 +97,8 @@ class SpeechConfig:
     Tuned for 8GB RAM + CPU-only systems:
     - base model: 74MB disk, ~800MB RAM, 5-7x realtime speed
     - int8 quantization: smallest CPU footprint
-    - beam_size 1: faster + less RAM than default 5
-    - 4-second chunks: fewer transcriptions per minute
+    - beam_size 5: better accuracy when singing (slower than 1)
+    - 5-second chunks with 1.5s overlap: better word continuity
 
     For 16GB+ systems, override in .env:
         WHISPER_MODEL=small
@@ -114,11 +114,11 @@ class SpeechConfig:
     device:       str  = os.getenv("WHISPER_DEVICE", "cpu")
     compute_type: str  = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
     language:     str  = "en"
-    beam_size:    int  = 1     # 1 for CPU (5 is default but slow)
+    beam_size:    int  = 5     # Increased for accuracy (was 1)
 
     # Streaming settings
-    chunk_duration_sec: float = 4.0   # 4s chunks for less RAM churn
-    overlap_sec:        float = 0.5   # 0.5s overlap for context
+    chunk_duration_sec: float = 5.0   # Was 4.0
+    overlap_sec:        float = 1.5   # Was 0.5 (much more overlap)
 
     # Model cache directory
     model_cache_dir: str = str(MODELS_DIR / "whisper")
