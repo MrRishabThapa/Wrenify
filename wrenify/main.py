@@ -340,12 +340,13 @@ def test_full_karaoke() -> None:
     """Launch a full karaoke session (music + lyrics + scoring)."""
     from PyQt6.QtWidgets import QApplication
 
-    from wrenify.ui.app import THEME_QSS, MainWindow
+    from wrenify.ui.app import MainWindow
+    from wrenify.ui.theme import global_stylesheet
 
     console.print("\n[cyan]Launching Wrenify karaoke...[/cyan]")
-    console.print("[yellow]You will be asked for:[/yellow]")
-    console.print("  1. Instrumental audio file (mp3/wav)")
-    console.print("  2. Lyrics file (.lrc)")
+    console.print("[yellow]Everything happens in the app now:[/yellow]")
+    console.print("  Library  = pick an imported song card")
+    console.print("  Import   = paste a YouTube URL or file path")
     console.print("\n[bold]HEADPHONES RECOMMENDED[/bold] to avoid mic feedback.\n")
 
     console.print("[dim]Keyboard shortcuts during karaoke:[/dim]")
@@ -356,10 +357,9 @@ def test_full_karaoke() -> None:
 
     app = QApplication(sys.argv)
     app.setApplicationName("Wrenify")
-    app.setStyleSheet(THEME_QSS)
+    app.setStyleSheet(global_stylesheet())
     window = MainWindow()
     window.show()
-    window.open_song_dialog()
     sys.exit(app.exec())
 
 
