@@ -219,15 +219,18 @@ class KaraokeView(QWidget):
         layout.addStretch()
 
         self.record_btn = self._make_control_btn("⏺ Record")
+        self.autotune_btn = self._make_control_btn("✨ Auto-Tune")
         self.end_btn = self._make_control_btn("⏹ End Karaoke", danger=True)
 
         layout.addWidget(self.record_btn)
+        layout.addWidget(self.autotune_btn)
         layout.addWidget(self.end_btn)
 
         self.seek_back_btn.clicked.connect(lambda: self._seek(-5.0))
         self.pause_btn.clicked.connect(self._toggle_pause)
         self.seek_fwd_btn.clicked.connect(lambda: self._seek(+5.0))
         self.record_btn.clicked.connect(self._toggle_recording)
+        self.autotune_btn.clicked.connect(self._toggle_autotune)
         self.end_btn.clicked.connect(self._end_karaoke_early)
 
         self._control_bar = container
@@ -338,6 +341,62 @@ class KaraokeView(QWidget):
                     border-color: rgba(180, 255, 57, 0.4);
                 }
             """)
+        self._update_record_tooltip()
+
+    def _toggle_autotune(self) -> None:
+        """Toggle auto-tune post-processing for the recording."""
+        self.session.toggle_autotune()
+        if self.session.is_autotune_enabled():
+            self.autotune_btn.setText("✨ Auto-Tune ON")
+            self.autotune_btn.setStyleSheet("""
+                QPushButton {
+                    background: rgba(180, 255, 57, 0.2);
+                    border: 1px solid rgba(180, 255, 57, 0.6);
+                    border-radius: 20px;
+                    color: #B4FF39;
+                    font-size: 13px;
+                    font-weight: 600;
+                    padding: 8px 16px;
+                }
+                QPushButton:hover {
+                    background: rgba(180, 255, 57, 0.3);
+                }
+            """)
+            self._show_toast("Auto-tune enabled — will process on save")
+        else:
+            self.autotune_btn.setText("✨ Auto-Tune")
+            self.autotune_btn.setStyleSheet(self._normal_btn_style())
+            self._show_toast("Auto-tune disabled")
+        self._update_record_tooltip()
+
+    def _normal_btn_style(self) -> str:
+        """Standard control button style."""
+        return """
+            QPushButton {
+                background: rgba(255, 255, 255, 0.06);
+                border: 1px solid rgba(255, 255, 255, 0.10);
+                border-radius: 20px;
+                color: white;
+                font-size: 13px;
+                font-weight: 500;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background: rgba(180, 255, 57, 0.15);
+                border-color: rgba(180, 255, 57, 0.4);
+            }
+        """
+
+    def _update_record_tooltip(self) -> None:
+        """Show what will happen when the session ends."""
+        if self.session.is_recording():
+            if self.session.is_autotune_enabled():
+                status = "Recording — auto-tune will apply on save"
+            else:
+                status = "Recording — raw version will be saved"
+        else:
+            status = ""
+        self.record_btn.setToolTip(status)
 
     def _end_karaoke_early(self) -> None:
         """User clicked End Karaoke — stop and show partial results."""
