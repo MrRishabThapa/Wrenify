@@ -120,6 +120,11 @@ class KaraokeSession(QObject):
         self.streamer = StreamingRecognizer(
             on_words_callback=self._on_words_recognized
         )
+
+        # NEW: Give streamer access to current song time so Whisper's
+        # chunk-relative timestamps can be converted to song-relative.
+        self.streamer.set_song_time_provider(self.timeline.now)
+
         self.streamer.start()
 
         # Forward audio chunks to streamer (only if both are alive)
