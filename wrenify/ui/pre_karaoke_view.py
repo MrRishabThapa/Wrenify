@@ -7,6 +7,10 @@ raising an open palm then closing it into a fist (best-effort OpenCV
 skin detection) — or by clicking the Start button. A 3-2-1 countdown
 follows, then ready_signal fires and the session begins.
 
+Layout (vertical flow, nothing overlaps):
+    title → headphone note → webcam → instruction pill →
+    [I'm Ready] [Back] → mic visualizer bar (full width)
+
 Visual feedback:
     NO_HAND      — no box, "Raise your hand to begin"
     HAND_SEEN    — RED box, "Show your open palm"
@@ -25,7 +29,7 @@ from typing import Optional
 import cv2
 import numpy as np
 from loguru import logger
-from PyQt6.QtCore import QPoint, QPointF, QRect, Qt, QThread, QTimer, pyqtSignal
+from PyQt6.QtCore import QPointF, QRect, QRectF, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import (
     QColor,
     QFont,
@@ -36,12 +40,17 @@ from PyQt6.QtGui import (
     QPixmap,
     QRadialGradient,
 )
-from PyQt6.QtWidgets import QLabel, QPushButton, QWidget
+from PyQt6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QVBoxLayout,
+    QWidget,
+)
 
 from wrenify.audio.capture import AudioCapture
 from wrenify.songs.song import Song
 from wrenify.ui.voice_visualizer import VoiceVisualizer
-from wrenify.ui.theme import THEME
+from wrenify.ui.widgets.glass import PillButton
 from wrenify.video.camera import WebcamCapture
 from wrenify.vision.gestures import GestureDetector, HandGesture
 
@@ -55,6 +64,196 @@ class PreKaraokeState(Enum):
     FIST_CLOSED = "fist_closed"    # Fist detected, countdown starting
     COUNTDOWN   = "countdown"      # 3-2-1 in progress
     STARTING    = "starting"       # Emitting ready signal
+
+
+class WebcamPreview(QWidget):
+    """
+    Dedicated webcam display: fitted frame, gesture box, countdown.
+
+    Painted here (not on the parent) so the surrounding layout stays
+    clean and nothing overlaps the instruction pill or buttons.
+    """
+
+    # Box colors per state
+    COLOR_HAND   = QColor(255, 59, 48)      # Red
+    COLOR_PALM   = QColor(76, 217, 100)     # Green
+    COLOR_FIST   = QColor(180, 255, 57)     # Bright lime
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._current_pixmap: Optional[QPixmap] = None
+        self._frame_width: int = 0
+        self._frame_height: int = 0
+        self._current_bbox: Optional[tuple[int, int, int, int]] = None
+        self._last_bbox: Optional[tuple[int, int, int, int]] = None
+        self._state: PreKaraokeState = PreKaraokeState.NO_HAND
+        self._countdown_value: int = 3
+
+    # ───────────────── Public updates ─────────────────
+
+    def update_frame(
+        self,
+        pixmap: QPixmap,
+        frame_w: int,
+        frame_h: int,
+        bbox: Optional[tuple[int, int, int, int]],
+        state: PreKaraokeState,
+        countdown_value: int,
+    ) -> None:
+        """Refresh all visual state from the gesture pipeline."""
+        self._current_pixmap = pixmap
+        self._frame_width = frame_w
+        self._frame_height = frame_h
+        self._current_bbox = bbox
+        self._state = state
+        self._countdown_value = countdown_value
+        self.update()
+
+    # ───────────────── Painting ─────────────────
+
+    def paintEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+        if self._current_pixmap is None or self._current_pixmap.isNull():
+            self._draw_no_webcam_placeholder(painter)
+            return
+
+        # Fit frame, centered, capped to the widget's height
+        margin = 24
+        max_h = self.height() - 2 * margin
+        scaled = self._current_pixmap.scaled(
+            self.width() - 2 * margin,
+            max_h,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        x = (self.width() - scaled.width()) // 2
+        y = (self.height() - scaled.height()) // 2
+        rect = QRect(x, y, scaled.width(), scaled.height())
+
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(rect), 20, 20)
+        painter.save()
+        painter.setClipPath(path)
+        painter.drawPixmap(x, y, scaled)
+        painter.restore()
+
+        painter.setPen(QPen(QColor(255, 255, 255, 42), 1))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(rect, 20, 20)
+
+        self._draw_gesture_box(painter, rect)
+        self._draw_countdown(painter)
+
+    def _draw_gesture_box(self, painter: QPainter, webcam_rect: QRect) -> None:
+        """Draw a colored bounding box around the detected hand."""
+        if self._frame_width == 0 or self._frame_height == 0:
+            return
+
+        bbox = self._current_bbox
+        if bbox is None:
+            if self._state in (
+                PreKaraokeState.FIST_CLOSED,
+                PreKaraokeState.COUNTDOWN,
+                PreKaraokeState.STARTING,
+            ):
+                bbox = self._last_bbox
+            else:
+                return
+        if bbox is None:
+            return
+
+        x, y, w, h = bbox
+        scale_x = webcam_rect.width() / self._frame_width
+        scale_y = webcam_rect.height() / self._frame_height
+        box_x = int(webcam_rect.x() + x * scale_x)
+        box_y = int(webcam_rect.y() + y * scale_y)
+        box_w = max(10, int(w * scale_x))
+        box_h = max(10, int(h * scale_y))
+
+        if self._state == PreKaraokeState.HAND_SEEN:
+            color, thickness, pulse = self.COLOR_HAND, 3, False
+        elif self._state == PreKaraokeState.PALM_OPEN:
+            color, thickness, pulse = self.COLOR_PALM, 4, False
+        elif self._state in (
+            PreKaraokeState.FIST_CLOSED,
+            PreKaraokeState.COUNTDOWN,
+            PreKaraokeState.STARTING,
+        ):
+            color, thickness, pulse = self.COLOR_FIST, 5, True
+        else:
+            return
+
+        if pulse:
+            pulse_val = (math.sin(time.monotonic() * 4) + 1) / 2
+            alpha = int(180 + 75 * pulse_val)
+            color = QColor(color.red(), color.green(), color.blue(), alpha)
+            thickness += int(2 * pulse_val)
+
+        pen = QPen(color, thickness)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(box_x, box_y, box_w, box_h, 12, 12)
+
+        marker_len = 20
+        marker_pen = QPen(color, thickness + 2)
+        marker_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(marker_pen)
+        painter.drawLine(box_x, box_y, box_x + marker_len, box_y)
+        painter.drawLine(box_x, box_y, box_x, box_y + marker_len)
+        painter.drawLine(box_x + box_w - marker_len, box_y,
+                         box_x + box_w, box_y)
+        painter.drawLine(box_x + box_w, box_y,
+                         box_x + box_w, box_y + marker_len)
+        painter.drawLine(box_x, box_y + box_h, box_x + marker_len,
+                         box_y + box_h)
+        painter.drawLine(box_x, box_y + box_h - marker_len,
+                         box_x, box_y + box_h)
+        painter.drawLine(box_x + box_w - marker_len, box_y + box_h,
+                         box_x + box_w, box_y + box_h)
+        painter.drawLine(box_x + box_w, box_y + box_h - marker_len,
+                         box_x + box_w, box_y + box_h)
+
+    def _draw_countdown(self, painter: QPainter) -> None:
+        """Big translucent countdown number over the webcam."""
+        if self._state not in (PreKaraokeState.COUNTDOWN,
+                               PreKaraokeState.STARTING):
+            return
+
+        text = str(self._countdown_value) if self._state == PreKaraokeState.COUNTDOWN else "GO!"
+        font = QFont("Inter", 180, QFont.Weight.Thin)
+        painter.setFont(font)
+        painter.setPen(QPen(QColor(180, 255, 57, 55), 12))
+        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, text)
+        painter.setPen(QColor(180, 255, 57, 230))
+        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, text)
+
+    def _draw_no_webcam_placeholder(self, painter: QPainter) -> None:
+        """Draw an informative placeholder when webcam is unavailable."""
+        rect = QRect(24, 24, self.width() - 48, self.height() - 48)
+        painter.setPen(QPen(QColor(255, 255, 255, 34), 1))
+        painter.setBrush(QColor(255, 255, 255, 15))
+        painter.drawRoundedRect(rect, 20, 20)
+
+        icon_x = rect.center().x() - 28
+        icon_y = rect.y() + rect.height() // 2 - 64
+        painter.setPen(QPen(QColor(180, 255, 57, 150), 2))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(icon_x, icon_y + 8, 56, 38, 8, 8)
+        painter.drawRoundedRect(icon_x + 11, icon_y, 20, 12, 4, 4)
+        painter.drawEllipse(icon_x + 19, icon_y + 17, 18, 18)
+
+        painter.setFont(QFont("Inter", 14))
+        painter.setPen(QColor(200, 200, 220))
+        painter.drawText(
+            QRect(rect.x(), rect.y() + rect.height() // 2 + 20,
+                  rect.width(), 40),
+            Qt.AlignmentFlag.AlignCenter,
+            "Webcam not available",
+        )
 
 
 class PreKaraokeView(QWidget):
@@ -72,17 +271,11 @@ class PreKaraokeView(QWidget):
     COUNTDOWN_START: int = 3
     GESTURE_HOLD_FRAMES: int = 6  # ~0.4s at 15fps gesture timer
 
-    # Box colors per state
-    COLOR_HAND   = QColor(255, 59, 48)      # Red
-    COLOR_PALM   = QColor(76, 217, 100)     # Green
-    COLOR_FIST   = QColor(180, 255, 57)     # Bright lime
-
     def __init__(self, song: Song, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.song = song
-        self._song_title = song.display_name
 
-        # 1. Safe defaults FIRST — before any code that may reference them
+        # Safe defaults FIRST — before any code that may reference them
         self.webcam: Optional[WebcamCapture] = None
         self.audio_capture: Optional[AudioCapture] = None
         self.gesture_detector = GestureDetector()
@@ -98,7 +291,6 @@ class PreKaraokeView(QWidget):
         self._gesture_confidence: float = 0.0
         self._frame_width: int = 0
         self._frame_height: int = 0
-        self._current_pixmap: Optional[QPixmap] = None
         self._gesture_hold_count: int = 0
         self._last_gesture = HandGesture.NONE
         self._countdown_value: int = self.COUNTDOWN_START
@@ -110,7 +302,7 @@ class PreKaraokeView(QWidget):
 
         self._build_ui()
 
-        # 2. Timers BEFORE capture startup (startup code starts them)
+        # Timers BEFORE capture startup (startup code starts them)
         self._gesture_timer = QTimer(self)
         self._gesture_timer.setInterval(66)  # ~15fps
         self._gesture_timer.timeout.connect(self._on_gesture_frame)
@@ -123,7 +315,7 @@ class PreKaraokeView(QWidget):
         self._countdown_timer.setInterval(1000)
         self._countdown_timer.timeout.connect(self._on_countdown_tick)
 
-        # 3. LAST: start captures (all attributes now exist)
+        # LAST: start captures (all attributes now exist)
         self._try_start_webcam()
         self._try_start_mic()
 
@@ -132,342 +324,136 @@ class PreKaraokeView(QWidget):
     def _build_ui(self) -> None:
         self.setStyleSheet("background: transparent; color: white;")
 
-        # Mic level visualizer (always visible, even if webcam fails)
-        self._viz = VoiceVisualizer(self)
-        self._viz.setFixedSize(240, 50)
-        self._viz_label = QLabel("Mic level", self)
-        self._viz_label.setFont(QFont("Inter", 10))
-        self._viz_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._viz_label.setStyleSheet(f"color: {THEME.colors.text_tertiary}; font-size: 11px;")
+        root = QVBoxLayout(self)
+        root.setContentsMargins(48, 24, 48, 24)
+        root.setSpacing(16)
 
-        # Buttons — smaller, refined
-        self._start_btn = QPushButton("I'm Ready", self)
-        self._start_btn.setFixedSize(160, 44)
-        self._start_btn.setStyleSheet(self._button_style("#8B5CF6", "white"))
-        self._start_btn.clicked.connect(self._begin_countdown)
-
-        self._cancel_btn = QPushButton("Back", self)
-        self._cancel_btn.setFixedSize(120, 44)
-        self._cancel_btn.setStyleSheet(self._button_style("rgba(255,255,255,.07)", "white"))
-        self._cancel_btn.clicked.connect(self._cancel)
-
-    @staticmethod
-    def _button_style(bg: str, fg: str) -> str:
-        return (
-            f"QPushButton {{"
-            f"  background: {bg}; color: {fg}; border-radius: 999px;"
-            f"  font-size: 14px; font-weight: 600; border: 1px solid {THEME.colors.border_subtle};"
-            f"}}"
-            f"QPushButton:hover {{ border-color: {THEME.colors.border_hover}; background: {THEME.colors.glass_hi}; }}"
+        # 1. Top: title + headphone warning (ABOVE webcam, subtle)
+        self._song_title_label = QLabel(self.song.display_name)
+        self._song_title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._song_title_label.setStyleSheet(
+            "color: rgba(180, 255, 57, 200); font-size: 20px; "
+            "font-weight: 500;"
         )
+        root.addWidget(self._song_title_label)
 
-    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
-        """Position overlay child widgets."""
-        w, h = self.width(), self.height()
+        headphone = QLabel("Headphones recommended — so the mic does not pick up the song")
+        headphone.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        headphone.setStyleSheet(
+            "color: rgba(255, 190, 110, 0.6); font-size: 11px;"
+        )
+        root.addWidget(headphone)
 
-        # Voice visualizer sits within the painted glass panel at bottom-left.
-        self._viz.setGeometry(36, h - 82, 220, 42)
-        self._viz_label.setGeometry(32, h - 112, 230, 20)
+        # 2. Webcam preview (dedicated child widget, expands)
+        self.preview = WebcamPreview()
+        root.addWidget(self.preview, stretch=1)
 
-        # Buttons bottom-center, just above the instruction pill
-        btn_y = h - 175
-        self._start_btn.move(w // 2 - 145, btn_y)
-        self._cancel_btn.move(w // 2 + 25, btn_y)
-        super().resizeEvent(event)
+        # 3. Instruction pill — dedicated row, never overlapped
+        self.instruction_label = QLabel()
+        self.instruction_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.instruction_label.setFixedHeight(48)
+        self._update_instruction_style(PreKaraokeState.NO_HAND)
+        root.addWidget(self.instruction_label)
 
-    # ───────────────── Painting ─────────────────
+        # 4. Buttons row (visible so gesture-free start is always possible)
+        buttons_row = QHBoxLayout()
+        buttons_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        buttons_row.setSpacing(12)
 
-    def paintEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        self._start_btn = PillButton("I'm Ready", variant="accent")
+        self._start_btn.setMinimumWidth(140)
+        self._start_btn.clicked.connect(self._begin_countdown)
+        buttons_row.addWidget(self._start_btn)
+
+        self._cancel_btn = PillButton("Back", variant="ghost")
+        self._cancel_btn.setMinimumWidth(100)
+        self._cancel_btn.clicked.connect(self._cancel)
+        buttons_row.addWidget(self._cancel_btn)
+
+        root.addLayout(buttons_row)
+
+        # 5. Bottom: mic visualizer bar (full width, subtle)
+        root.addWidget(self._build_viz_bar())
+
+    def _build_viz_bar(self) -> QWidget:
+        """Bottom full-width voice visualizer + status text."""
+        container = QWidget()
+        container.setFixedHeight(60)
+        container.setStyleSheet("""
+            background: rgba(255, 255, 255, 0.03);
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+        """)
+
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(24, 8, 24, 8)
+
+        mic_label = QLabel("MIC")
+        mic_label.setStyleSheet(
+            "color: rgba(255,255,255,0.5); font-size: 10px;"
+            " letter-spacing: 2px;"
+        )
+        layout.addWidget(mic_label)
+
+        self._viz = VoiceVisualizer()
+        self._viz.setFixedWidth(200)
+        layout.addWidget(self._viz)
+
+        layout.addStretch()
+
+        self._viz_status = QLabel("Ready · 44.1kHz · Whisper base")
+        self._viz_status.setStyleSheet(
+            "color: rgba(255,255,255,0.4); font-size: 11px;"
+        )
+        layout.addWidget(self._viz_status)
+
+        return container
+
+    def _update_instruction_style(self, state: PreKaraokeState) -> None:
+        """Set instruction text + color for the current gesture state."""
+        text_map = {
+            PreKaraokeState.NO_HAND:     ("Raise your hand to begin", "rgba(255,255,255,0.6)"),
+            PreKaraokeState.HAND_SEEN:   ("Show your open palm", "#FFB84D"),
+            PreKaraokeState.PALM_OPEN:   ("Close your fist to start", "#4CD964"),
+            PreKaraokeState.FIST_CLOSED: ("Get ready...", "#B4FF39"),
+            PreKaraokeState.COUNTDOWN:   (str(self._countdown_value), "#B4FF39"),
+            PreKaraokeState.STARTING:    ("GO!", "#B4FF39"),
+        }
+        text, color = text_map.get(state, ("", "#FFF"))
+        self.instruction_label.setText(text)
+        self.instruction_label.setStyleSheet(f"""
+            color: {color};
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(180, 255, 57, 0.2);
+            border-radius: 24px;
+            padding: 8px 32px;
+            font-size: 16px;
+        """)
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        """Ambient background only — content lives in layout children."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-
-        # 1. Background
-        self._draw_ambient_background(painter)
-        self._draw_visualizer_panel(painter)
-
-        # 2. Song title — small, elegant, top center
-        self._draw_title(painter)
-
-        # 3. Webcam feed
-        webcam_rect = self._draw_webcam(painter)
-
-        # 4. Gesture bounding box on top of webcam
-        self._draw_gesture_box(painter, webcam_rect)
-
-        # 5. Headphone reminder — subtle line below webcam
-        self._draw_headphone_warning(painter, webcam_rect)
-
-        # 6. Instruction text / countdown
-        self._draw_current_instruction(painter)
-
-        # 7. Gesture debug indicator (top left)
-        self._draw_gesture_indicator(painter)
-
-        painter.end()
-
-    def _draw_ambient_background(self, painter: QPainter) -> None:
         painter.fillRect(self.rect(), QColor(10, 10, 21))
-        for x, y, scale, color in ((.16, .18, .60, QColor(139, 92, 246, 40)), (.84, .82, .50, QColor(180, 255, 57, 28))):
+        for x, y, scale, color in (
+            (.16, .18, .60, QColor(139, 92, 246, 40)),
+            (.84, .82, .50, QColor(180, 255, 57, 28)),
+        ):
             radius = int(min(self.width(), self.height()) * scale)
-            gradient = QRadialGradient(QPointF(int(self.width() * x), int(self.height() * y)), radius)
+            gradient = QRadialGradient(
+                QPointF(int(self.width() * x), int(self.height() * y)), radius
+            )
             gradient.setColorAt(0, color)
-            edge = QColor(color); edge.setAlpha(0)
+            edge = QColor(color)
+            edge.setAlpha(0)
             gradient.setColorAt(1, edge)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(gradient)
-            painter.drawEllipse(int(self.width() * x) - radius, int(self.height() * y) - radius, radius * 2, radius * 2)
-
-    def _draw_visualizer_panel(self, painter: QPainter) -> None:
-        panel = QRect(20, self.height() - 126, 252, 102)
-        painter.setPen(QPen(QColor(255, 255, 255, 30), 1))
-        painter.setBrush(QColor(255, 255, 255, 15))
-        painter.drawRoundedRect(panel, 16, 16)
-
-    def _draw_title(self, painter: QPainter) -> None:
-        """Song title — small, elegant, top center."""
-        font = QFont("Inter", 20, QFont.Weight.Medium)
-        painter.setFont(font)
-        painter.setPen(QColor(180, 255, 57, 200))  # Lime at 80%
-        painter.drawText(
-            self.rect().adjusted(0, 25, 0, 0),
-            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-            self._song_title,
-        )
-
-    def _draw_headphone_warning(self, painter: QPainter, webcam_rect: QRect) -> None:
-        """Subtle headphone reminder below the webcam feed."""
-        font = QFont("Inter", 11)
-        painter.setFont(font)
-        painter.setPen(QColor(255, 190, 110, 150))  # Warm orange at 60%
-        text = "Headphones recommended so the mic does not pick up the song"
-        pill_y = min(webcam_rect.bottom() + 14, self.height() - 170)
-        painter.drawText(
-            QRect(0, pill_y, self.width(), 24),
-            Qt.AlignmentFlag.AlignHCenter,
-            text,
-        )
-
-    def _draw_webcam(self, painter: QPainter) -> QRect:
-        """Draw webcam frame fitted to the widget. Returns its rect."""
-        if self._current_pixmap is None:
-            return self._draw_no_webcam_placeholder(painter)
-
-        # Cap at ~60% of screen height for breathing room
-        max_h = int(self.height() * 0.6)
-        scaled = self._current_pixmap.scaled(
-            self.width(),
-            max_h,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        x = (self.width() - scaled.width()) // 2
-        y = (self.height() - scaled.height()) // 2
-        rect = QRect(x, y, scaled.width(), scaled.height())
-        path = QPainterPath()
-        path.addRoundedRect(rect, 20, 20)
-        painter.save()
-        painter.setClipPath(path)
-        painter.drawPixmap(x, y, scaled)
-        painter.restore()
-        painter.setPen(QPen(QColor(255, 255, 255, 42), 1))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRoundedRect(rect, 20, 20)
-        return rect
-
-    def _draw_no_webcam_placeholder(self, painter: QPainter) -> QRect:
-        """Draw an informative placeholder when webcam is unavailable."""
-        rect = QRect(20, 110, self.width() - 40, self.height() - 240)
-        painter.setPen(QPen(QColor(255, 255, 255, 34), 1))
-        painter.setBrush(QColor(255, 255, 255, 15))
-        painter.drawRoundedRect(rect, 20, 20)
-
-        # A simple camera glyph, painted from geometry so it remains crisp
-        # and consistent with the rest of the interface at every scale.
-        icon_x = rect.center().x() - 28
-        icon_y = rect.y() + rect.height() // 2 - 64
-        painter.setPen(QPen(QColor(180, 255, 57, 150), 2))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRoundedRect(icon_x, icon_y + 8, 56, 38, 8, 8)
-        painter.drawRoundedRect(icon_x + 11, icon_y, 20, 12, 4, 4)
-        painter.drawEllipse(icon_x + 19, icon_y + 17, 18, 18)
-
-        msg_font = QFont("Inter", 14)
-        painter.setFont(msg_font)
-        painter.setPen(QColor(200, 200, 220))
-        painter.drawText(
-            QRect(rect.x(), rect.y() + rect.height() // 2 + 20,
-                  rect.width(), 40),
-            Qt.AlignmentFlag.AlignCenter,
-            "Webcam not available",
-        )
-
-        hint_font = QFont("Inter", 11)
-        painter.setFont(hint_font)
-        painter.setPen(QColor(140, 140, 160))
-        painter.drawText(
-            QRect(rect.x(), rect.y() + rect.height() // 2 + 60,
-                  rect.width(), 30),
-            Qt.AlignmentFlag.AlignCenter,
-            "Test with: cheese  or  ffplay /dev/video0",
-        )
-        return self.rect()
-
-    def _draw_gesture_box(self, painter: QPainter, webcam_rect: QRect) -> None:
-        """Draw a colored bounding box around the detected hand."""
-        if self._frame_width == 0 or self._frame_height == 0:
-            return
-
-        # Fist/countdown: keep drawing the last known box even if the
-        # blob briefly disappears.
-        bbox = self._current_bbox
-        if bbox is None:
-            if self._state in (
-                PreKaraokeState.FIST_CLOSED,
-                PreKaraokeState.COUNTDOWN,
-                PreKaraokeState.STARTING,
-            ):
-                bbox = self._last_bbox
-            else:
-                return
-        if bbox is None:
-            return
-
-        # Map frame coords -> displayed webcam rect.
-        # The frame is already mirrored at capture time, so no flip here.
-        x, y, w, h = bbox
-        scale_x = webcam_rect.width() / self._frame_width
-        scale_y = webcam_rect.height() / self._frame_height
-        box_x = int(webcam_rect.x() + x * scale_x)
-        box_y = int(webcam_rect.y() + y * scale_y)
-        box_w = max(10, int(w * scale_x))
-        box_h = max(10, int(h * scale_y))
-
-        # Color + thickness by state
-        if self._state == PreKaraokeState.HAND_SEEN:
-            color, thickness, pulse = self.COLOR_HAND, 3, False
-        elif self._state == PreKaraokeState.PALM_OPEN:
-            color, thickness, pulse = self.COLOR_PALM, 4, False
-        elif self._state in (
-            PreKaraokeState.FIST_CLOSED,
-            PreKaraokeState.COUNTDOWN,
-            PreKaraokeState.STARTING,
-        ):
-            color, thickness, pulse = self.COLOR_FIST, 5, True
-        else:
-            return  # No hand or still waiting
-
-        # Pulse effect
-        if pulse:
-            pulse_val = (math.sin(time.monotonic() * 4) + 1) / 2  # 0-1
-            alpha = int(180 + 75 * pulse_val)                     # 180-255
-            color = QColor(color.red(), color.green(), color.blue(), alpha)
-            thickness += int(2 * pulse_val)
-
-        # Box with rounded corners
-        pen = QPen(color, thickness)
-        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-        painter.setPen(pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRoundedRect(box_x, box_y, box_w, box_h, 12, 12)
-
-        # Corner markers (cyber/HUD aesthetic)
-        marker_len = 20
-        marker_pen = QPen(color, thickness + 2)
-        marker_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        painter.setPen(marker_pen)
-        # Top-left
-        painter.drawLine(box_x, box_y, box_x + marker_len, box_y)
-        painter.drawLine(box_x, box_y, box_x, box_y + marker_len)
-        # Top-right
-        painter.drawLine(box_x + box_w - marker_len, box_y,
-                         box_x + box_w, box_y)
-        painter.drawLine(box_x + box_w, box_y,
-                         box_x + box_w, box_y + marker_len)
-        # Bottom-left
-        painter.drawLine(box_x, box_y + box_h, box_x + marker_len,
-                         box_y + box_h)
-        painter.drawLine(box_x, box_y + box_h - marker_len,
-                         box_x, box_y + box_h)
-        # Bottom-right
-        painter.drawLine(box_x + box_w - marker_len, box_y + box_h,
-                         box_x + box_w, box_y + box_h)
-        painter.drawLine(box_x + box_w, box_y + box_h - marker_len,
-                         box_x + box_w, box_y + box_h)
-
-    def _draw_current_instruction(self, painter: QPainter) -> None:
-        """Draw the state-appropriate instruction at the bottom."""
-        instructions = {
-            PreKaraokeState.NO_HAND:     "Raise your hand to begin",
-            PreKaraokeState.HAND_SEEN:   "Show your open palm",
-            PreKaraokeState.PALM_OPEN:   "Close your fist to start",
-            PreKaraokeState.FIST_CLOSED: "Get ready...",
-            PreKaraokeState.COUNTDOWN:   str(self._countdown_value),
-            PreKaraokeState.STARTING:    "GO!",
-        }
-
-        text = instructions.get(self._state, "")
-        if not text:
-            return
-
-        # Big centered countdown number — big but light
-        if self._state in (PreKaraokeState.COUNTDOWN,
-                           PreKaraokeState.STARTING):
-            font = QFont("Inter", 180, QFont.Weight.Thin)
-            painter.setFont(font)
-            painter.setPen(QPen(QColor(180, 255, 57, 55), 12))
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, text)
-            painter.setPen(QColor(180, 255, 57, 230))
-            painter.drawText(
-                self.rect(),
-                Qt.AlignmentFlag.AlignCenter,
-                text,
+            painter.drawEllipse(
+                int(self.width() * x) - radius,
+                int(self.height() * y) - radius,
+                radius * 2,
+                radius * 2,
             )
-            return
-
-        # Elegant pill-shaped instruction near the bottom
-        font = QFont("Inter", 24, QFont.Weight.Normal)
-        painter.setFont(font)
-
-        if self._state == PreKaraokeState.NO_HAND:
-            text_color = QColor(200, 200, 220, 160)   # Dim gray
-        elif self._state == PreKaraokeState.HAND_SEEN:
-            text_color = QColor(255, 149, 0, 204)     # Orange 80%
-        elif self._state == PreKaraokeState.PALM_OPEN:
-            text_color = QColor(76, 217, 100, 204)    # Green 80%
-        else:
-            text_color = QColor(180, 255, 57, 204)    # Lime 80%
-
-        metrics = painter.fontMetrics()
-        text_width = metrics.horizontalAdvance(text)
-        text_height = metrics.height()
-
-        pill_x = (self.width() - text_width) // 2 - 20
-        pill_y = self.height() - 120
-        pill_w = text_width + 40
-        pill_h = text_height + 16
-
-        painter.setPen(QPen(QColor(180, 255, 57, 60), 1))
-        painter.setBrush(QColor(255, 255, 255, 20))
-        painter.drawRoundedRect(pill_x, pill_y, pill_w, pill_h, pill_h // 2, pill_h // 2)
-
-        painter.setPen(text_color)
-        painter.drawText(
-            pill_x + 20,
-            pill_y + text_height + 4,
-            text,
-        )
-
-    def _draw_gesture_indicator(self, painter: QPainter) -> None:
-        """Small debug badge in the top-left corner."""
-        text = (
-            f"state={self._state.value} | "
-            f"gesture={self._current_gesture.value} | "
-            f"conf={self._gesture_confidence:.2f}"
-        )
-        painter.setFont(QFont("Inter", 9))
-        painter.setPen(QColor(255, 255, 255, 100))
-        painter.drawText(16, 30, text)
 
     # ───────────────── Webcam ─────────────────
 
@@ -475,14 +461,12 @@ class PreKaraokeView(QWidget):
         try:
             self.webcam = WebcamCapture()
             self.webcam.start()
-            # getattr guard: never reference a timer that may not exist yet
             gesture_timer = getattr(self, '_gesture_timer', None)
             if gesture_timer is not None:
                 gesture_timer.start()
             logger.info("Pre-karaoke: webcam + gesture detection ready")
         except Exception as e:
             logger.warning(f"Webcam unavailable on ready screen: {e}")
-            # Stop a partially-started capture so no thread leaks
             if self.webcam is not None:
                 try:
                     self.webcam.stop()
@@ -501,7 +485,6 @@ class PreKaraokeView(QWidget):
             logger.info("Pre-karaoke: mic ready")
         except Exception as e:
             logger.warning(f"Mic unavailable on ready screen: {e}")
-            # Stop a partially-started capture so no stream leaks
             if self.audio_capture is not None:
                 try:
                     self.audio_capture.stop()
@@ -526,7 +509,6 @@ class PreKaraokeView(QWidget):
 
     def _teardown_safely(self) -> None:
         """Stop everything in the correct order to prevent segfault."""
-        # Stop timers FIRST (they may access other resources)
         for timer_name in ('_gesture_timer', '_mic_timer', '_countdown_timer'):
             timer = getattr(self, timer_name, None)
             if timer is not None:
@@ -535,7 +517,6 @@ class PreKaraokeView(QWidget):
                 except Exception as e:
                     logger.debug(f"Failed to stop {timer_name}: {e}")
 
-        # Then stop capture threads
         if getattr(self, 'audio_capture', None) is not None:
             try:
                 self.audio_capture.stop()
@@ -550,7 +531,6 @@ class PreKaraokeView(QWidget):
                 logger.debug(f"Webcam cleanup: {e}")
             self.webcam = None
 
-        # Finally release detector
         if getattr(self, 'gesture_detector', None) is not None:
             try:
                 self.gesture_detector.close()
@@ -564,12 +544,10 @@ class PreKaraokeView(QWidget):
         if not self.isVisible() or self._emitted:
             return
         if self.webcam is None:
-            self.update()
             return
 
         frame_data = self.webcam.get_latest_frame()
         if frame_data is None:
-            self.update()
             return
 
         # Mirror the frame (selfie view)
@@ -587,13 +565,19 @@ class PreKaraokeView(QWidget):
 
         self._update_state(result.gesture)
 
-        # Convert to pixmap (displayed mirrored, same as detection)
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         h, w, ch = rgb.shape
         qimg = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
-        self._current_pixmap = QPixmap.fromImage(qimg)
+        pixmap = QPixmap.fromImage(qimg)
 
-        self.update()
+        self.preview.update_frame(
+            pixmap,
+            self._frame_width,
+            self._frame_height,
+            self._current_bbox,
+            self._state,
+            self._countdown_value,
+        )
 
     def _update_state(self, gesture: HandGesture) -> None:
         """State machine transitions based on detected gesture."""
@@ -613,7 +597,6 @@ class PreKaraokeView(QWidget):
 
         elif self._state == PreKaraokeState.HAND_SEEN:
             if gesture == HandGesture.NONE:
-                # Lost the hand
                 if hold_confirmed:
                     self._state = PreKaraokeState.NO_HAND
                     logger.info("Hand lost, back to NO_HAND")
@@ -627,12 +610,13 @@ class PreKaraokeView(QWidget):
                 logger.info("Fist confirmed, starting countdown")
                 self._begin_countdown()
             elif gesture == HandGesture.NONE and hold_confirmed:
-                # Hand dropped entirely — back to scanning
                 self._state = PreKaraokeState.HAND_SEEN
                 logger.info("Hand lost during palm, back to HAND_SEEN")
 
         elif self._state == PreKaraokeState.FIST_CLOSED:
             self._state = PreKaraokeState.COUNTDOWN
+
+        self._update_instruction_style(self._state)
 
     # ───────────────── Countdown ─────────────────
 
@@ -643,17 +627,18 @@ class PreKaraokeView(QWidget):
         self._start_btn.setEnabled(False)
         self._state = PreKaraokeState.COUNTDOWN
         self._countdown_value = self.COUNTDOWN_START
+        self._update_instruction_style(self._state)
         self._countdown_timer.start()
 
     def _on_countdown_tick(self) -> None:
         self._countdown_value -= 1
         if self._countdown_value > 0:
-            self.update()
+            self._update_instruction_style(self._state)
             return
 
         self._countdown_timer.stop()
         self._state = PreKaraokeState.STARTING
-        self.update()
+        self._update_instruction_style(self._state)
         logger.info("Countdown finished, starting session")
         QTimer.singleShot(400, self._emit_ready)
 
