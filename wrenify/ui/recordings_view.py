@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
 
 from loguru import logger
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QFileDialog,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -132,100 +130,11 @@ class RecordingsView(QWidget):
             )
 
     def _export_recording(self, recording: Recording) -> None:
-        """Choose which version to export."""
-        # Build list of available versions
-        options = []
-        version_paths = {}
+        """Show custom export dialog."""
+        from wrenify.ui.widgets.export_dialog import ExportDialog
 
-        if recording.has_mixed_raw:
-            options.append("With music — Raw voice")
-            version_paths["With music — Raw voice"] = recording.mixed_raw_path
-
-        if recording.has_mixed_autotuned:
-            options.append("With music — Auto-tuned ✨")
-            version_paths["With music — Auto-tuned ✨"] = (
-                recording.mixed_autotuned_path
-            )
-
-        if recording.has_voice_raw:
-            options.append("Voice only — Raw")
-            version_paths["Voice only — Raw"] = recording.voice_raw_path
-
-        if recording.has_voice_autotuned:
-            options.append("Voice only — Auto-tuned ✨")
-            version_paths["Voice only — Auto-tuned ✨"] = (
-                recording.voice_autotuned_path
-            )
-
-        if recording.video_raw_path and recording.video_raw_path.exists():
-            options.append("Video — Raw")
-            version_paths["Video — Raw"] = recording.video_raw_path
-
-        if (
-            recording.video_autotuned_path
-            and recording.video_autotuned_path.exists()
-        ):
-            options.append("Video — Auto-tuned ✨")
-            version_paths["Video — Auto-tuned ✨"] = (
-                recording.video_autotuned_path
-            )
-
-        if not options:
-            QMessageBox.warning(
-                self, "Nothing to Export", "No versions available."
-            )
-            return
-
-        from PyQt6.QtWidgets import QInputDialog
-
-        # Default: mixed_autotuned if available, else mixed_raw
-        default_idx = 0
-        if "With music — Auto-tuned ✨" in options:
-            default_idx = options.index("With music — Auto-tuned ✨")
-        elif "With music — Raw voice" in options:
-            default_idx = options.index("With music — Raw voice")
-
-        choice, ok = QInputDialog.getItem(
-            self,
-            "Export Version",
-            f"Which version to export?\n\n({recording.display_name})",
-            options,
-            default_idx,
-            False,
-        )
-        if not ok:
-            return
-
-        source = version_paths[choice]
-        suffix = source.suffix
-
-        # Build filename
-        safe_title = recording.song_title.replace("/", "_")
-        safe_artist = recording.song_artist.replace("/", "_")
-        version_tag = (
-            choice.replace(" ", "_")
-            .replace("—", "-")
-            .replace("✨", "autotuned")
-        )
-        default_name = f"{safe_artist}_-_{safe_title}_{version_tag}{suffix}"
-
-        target, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export Recording",
-            str(Path.home() / default_name),
-            f"Media files (*{suffix})",
-        )
-
-        if not target:
-            return
-
-        try:
-            import shutil
-
-            shutil.copy(source, target)
-            QMessageBox.information(self, "Exported", f"Saved to {target}")
-        except Exception as e:
-            QMessageBox.critical(self, "Export Failed", str(e))
+        dialog = ExportDialog(recording, parent=self)
+        dialog.exec()  # Blocks until user cancels or exports
 
     def _delete_recording(self, recording: Recording) -> None:
         """Delete with confirmation."""
