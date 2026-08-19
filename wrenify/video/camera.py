@@ -17,6 +17,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 import cv2
@@ -66,36 +67,89 @@ class WebcamCapture:
         self._lock = threading.Lock()
 
     def _open_camera(self) -> cv2.VideoCapture:
-        """Open the webcam and configure resolution + fps."""
+        """Open the webcam with detailed diagnostics on failure."""
+        # Diagnostic: check /dev/video devices exist
+        video_devices = sorted(Path("/dev").glob("video*"))
+        if not video_devices:
+            logger.error(
+                "No /dev/video* devices found. "
+                "Check: is a webcam plugged in? Is the kernel driver loaded?"
+            )
+            raise RuntimeError("No video devices in /dev/")
+
+        logger.info(f"Available video devices: {[str(d) for d in video_devices]}")
+
+        # Diagnostic: check permissions
+        device_path = f"/dev/video{self.cfg.webcam_index}"
+        if os.path.exists(device_path):
+            readable = os.access(device_path, os.R_OK)
+            writable = os.access(device_path, os.W_OK)
+            logger.info(
+                f"{device_path} permissions: read={readable} write={writable}"
+            )
+            if not readable:
+                logger.error(
+                    f"Cannot read {device_path}. "
+                    f"Fix: sudo usermod -aG video $USER && logout"
+                )
+
+        # Diagnostic: check if device is busy
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["fuser", device_path],
+                capture_output=True, text=True, timeout=1,
+            )
+            if result.stdout.strip():
+                logger.warning(
+                    f"{device_path} is being used by PID: {result.stdout.strip()}. "
+                    f"Close other webcam apps (Zoom, Discord, browser tabs)."
+                )
+        except Exception:
+            pass  # fuser not available or timed out
+
+        # Try to open
+        logger.info(f"Attempting to open webcam at index {self.cfg.webcam_index}")
         cap = cv2.VideoCapture(self.cfg.webcam_index)
 
         if not cap.isOpened():
-            raise RuntimeError(
-                f"Cannot open webcam at index {self.cfg.webcam_index}. "
-                f"Check permissions and that no other app is using it."
-            )
+            # Try alternative backends
+            logger.warning("Default backend failed, trying V4L2 explicitly")
+            cap = cv2.VideoCapture(self.cfg.webcam_index, cv2.CAP_V4L2)
 
-        # Request our desired resolution and fps
+        if not cap.isOpened():
+            logger.error(
+                f"Cannot open webcam at index {self.cfg.webcam_index}. "
+                f"Devices exist: {[str(d) for d in video_devices]}. "
+                f"Try: cheese  OR  ffplay /dev/video0  to test outside Wrenify."
+            )
+            raise RuntimeError(f"cv2.VideoCapture({self.cfg.webcam_index}) failed")
+
+        # Configure resolution + fps
         cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self.cfg.width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.cfg.height)
         cap.set(cv2.CAP_PROP_FPS,          self.cfg.fps)
 
-        # Verify what we actually got (webcams often refuse)
+        # Verify actual config
         actual_w   = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         actual_h   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         actual_fps = float(cap.get(cv2.CAP_PROP_FPS))
 
-        logger.info(
-            f"Webcam opened | index={self.cfg.webcam_index} "
-            f"resolution={actual_w}x{actual_h} fps={actual_fps:.1f}"
-        )
-
-        if (actual_w, actual_h) != (self.cfg.width, self.cfg.height):
-            logger.warning(
-                f"Webcam gave us {actual_w}x{actual_h} instead of "
-                f"{self.cfg.width}x{self.cfg.height} (may be hardware limit)"
+        # CRITICAL: test that we can actually READ a frame
+        ret, test_frame = cap.read()
+        if not ret or test_frame is None:
+            logger.error(
+                "Webcam opened but cannot read frames. "
+                "This can happen when another app owns exclusive access."
             )
+            cap.release()
+            raise RuntimeError("Webcam read test failed")
 
+        logger.success(
+            f"Webcam ready | index={self.cfg.webcam_index} "
+            f"resolution={actual_w}x{actual_h} fps={actual_fps:.1f} "
+            f"test_frame_shape={test_frame.shape}"
+        )
         return cap
 
     def _capture_loop(self) -> None:
