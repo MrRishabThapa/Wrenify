@@ -113,10 +113,26 @@ class VocalSeparator:
 
         elapsed = time.monotonic() - start
 
-        # Find output files
-        source_dir = temp_dir / self.model / input_path.stem
-        vocals_src = self._find_file(source_dir, "vocals")
-        instrumental_src = self._find_file(source_dir, "no_vocals")
+        # Find output files — demucs 4.x writes straight into
+        # <out>/<model>/ when --filename is given; older versions
+        # used a <track_name> subfolder. Try both layouts.
+        model_dir = temp_dir / self.model
+        source_dir = model_dir / input_path.stem
+        if not source_dir.exists():
+            source_dir = model_dir
+        if not source_dir.exists():
+            raise RuntimeError(
+                f"Demucs output missing. Folder contents: "
+                f"{list(temp_dir.rglob('*.wav')) if temp_dir.exists() else 'NONE'}"
+            )
+
+        # Exact names first (avoids "vocals" matching no_vocals.wav)
+        vocals_src = source_dir / "vocals.wav"
+        if not vocals_src.exists():
+            vocals_src = self._find_file(source_dir, "vocals", exclude_prefix="no_")
+        instrumental_src = source_dir / "no_vocals.wav"
+        if not instrumental_src.exists():
+            instrumental_src = self._find_file(source_dir, "no_vocals")
 
         if not vocals_src or not instrumental_src:
             raise RuntimeError(
@@ -142,11 +158,16 @@ class VocalSeparator:
         )
 
     @staticmethod
-    def _find_file(folder: Path, stem_keyword: str) -> Optional[Path]:
+    def _find_file(
+        folder: Path, stem_keyword: str, exclude_prefix: str = ""
+    ) -> Optional[Path]:
         if not folder.exists():
             return None
         for f in folder.iterdir():
-            if stem_keyword in f.stem.lower() and f.suffix in (".wav", ".mp3"):
+            stem_lower = f.stem.lower()
+            if exclude_prefix and stem_lower.startswith(exclude_prefix):
+                continue
+            if stem_keyword in stem_lower and f.suffix in (".wav", ".mp3"):
                 return f
         return None
 
