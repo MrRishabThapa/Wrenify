@@ -31,14 +31,6 @@ class Recording:
     video_raw_path:       Optional[Path] = None
     video_autotuned_path: Optional[Path] = None
 
-    # Score data
-    grade:         str = "F"
-    score_pct:     float = 0.0
-    correct_count: int = 0
-    wrong_count:   int = 0
-    missed_count:  int = 0
-    total_words:   int = 0
-
     @property
     def display_name(self) -> str:
         return f"{self.song_artist} - {self.song_title}"
@@ -97,12 +89,6 @@ class Recording:
             "mixed_autotuned_path":  str(self.mixed_autotuned_path) if self.mixed_autotuned_path else None,
             "video_raw_path":        str(self.video_raw_path) if self.video_raw_path else None,
             "video_autotuned_path":  str(self.video_autotuned_path) if self.video_autotuned_path else None,
-            "grade":                 self.grade,
-            "score_pct":             self.score_pct,
-            "correct_count":         self.correct_count,
-            "wrong_count":           self.wrong_count,
-            "missed_count":          self.missed_count,
-            "total_words":           self.total_words,
         }
 
     @classmethod
@@ -126,10 +112,4 @@ class Recording:
             mixed_autotuned_path=_path("mixed_autotuned_path"),
             video_raw_path=_path("video_raw_path", "video_path"),
             video_autotuned_path=_path("video_autotuned_path", "autotuned_video_path"),
-            grade=data.get("grade", "F"),
-            score_pct=data.get("score_pct", 0.0),
-            correct_count=data.get("correct_count", 0),
-            wrong_count=data.get("wrong_count", 0),
-            missed_count=data.get("missed_count", 0),
-            total_words=data.get("total_words", 0),
         )
