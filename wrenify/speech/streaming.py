@@ -65,10 +65,19 @@ class StreamingRecognizer:
         self.chunk_threshold: int = chunk_samples
 
         # Threading
-        self._process_queue: queue.Queue[np.ndarray] = queue.Queue(maxsize=5)
+        self._process_queue: queue.Queue[object] = queue.Queue(maxsize=5)
         self._thread: Optional[threading.Thread] = None
         self._running: bool = False
         self._lock = threading.Lock()
+
+        # Song-time tracking: Whisper timestamps are chunk-relative,
+        # convert them to song-relative before emitting words.
+        self._chunk_start_song_time: float = 0.0
+        self._song_time_provider: Optional[Callable[[], float]] = None
+
+    def set_song_time_provider(self, provider: Callable[[], float]) -> None:
+        """Set a callable that returns the current song time."""
+        self._song_time_provider = provider
 
     def start(self) -> None:
         """Warm up the model and start the background thread."""
@@ -104,6 +113,11 @@ class StreamingRecognizer:
     def push_audio(self, chunk: np.ndarray) -> None:
         """Add an audio chunk to the buffer, trigger processing if full."""
         with self._lock:
+            # If buffer is empty, this is the START of a new chunk.
+            # Record the song time of its first sample.
+            if self.buffer_samples == 0 and self._song_time_provider:
+                self._chunk_start_song_time = self._song_time_provider()
+
             self.buffer.append(chunk)
             self.buffer_samples += len(chunk)
 
@@ -113,9 +127,16 @@ class StreamingRecognizer:
             # Combine buffered audio
             combined = np.concatenate(list(self.buffer))
 
+            # Include the song-time offset of this chunk's first sample
+            offset = (
+                self._chunk_start_song_time
+                if self._song_time_provider
+                else 0.0
+            )
+
             # Send to worker (drop if queue full — better than lag)
             try:
-                self._process_queue.put_nowait(combined)
+                self._process_queue.put_nowait((combined, offset))
             except queue.Full:
                 logger.warning("Whisper queue full — dropping chunk")
 
@@ -127,20 +148,30 @@ class StreamingRecognizer:
                 self.buffer.clear()
                 self.buffer.append(combined[-overlap_samples:])
                 self.buffer_samples = overlap_samples
+                # The overlap tail's first sample was captured
+                # overlap_sec before now — re-anchor the offset.
+                if self._song_time_provider:
+                    self._chunk_start_song_time = (
+                        self._song_time_provider() - self.cfg.overlap_sec
+                    )
             else:
                 self.buffer.clear()
                 self.buffer_samples = 0
+                if self._song_time_provider:
+                    self._chunk_start_song_time = self._song_time_provider()
 
     def _process_loop(self) -> None:
         """Worker thread: pull chunks from queue, transcribe, emit."""
         while self._running:
             try:
-                audio = self._process_queue.get(timeout=0.5)
+                item = self._process_queue.get(timeout=0.5)
             except queue.Empty:
                 continue
 
-            if len(audio) == 0:
+            if not isinstance(item, tuple):
                 break  # Sentinel
+
+            audio, chunk_song_offset = item
 
             try:
                 start = time.monotonic()
@@ -151,8 +182,14 @@ class StreamingRecognizer:
                 elapsed = time.monotonic() - start
 
                 if result.words:
+                    # Convert chunk-relative timestamps to song-relative
+                    for word in result.words:
+                        word.start += chunk_song_offset
+                        word.end += chunk_song_offset
+
                     logger.debug(
-                        f"Recognized {len(result.words)} words in {elapsed:.2f}s"
+                        f"Recognized {len(result.words)} words in "
+                        f"{elapsed:.2f}s, chunk offset {chunk_song_offset:.2f}s"
                     )
                     self.on_words(result.words)
 
