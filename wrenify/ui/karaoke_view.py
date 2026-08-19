@@ -45,8 +45,6 @@ STATE_COLORS: dict[WordState, QColor] = {
     WordState.MISSED:  QColor(255, 59,  48),    # Red
 }
 
-OUTLINE_COLOR = QColor(0, 0, 0, 220)
-
 
 class KaraokeView(QWidget):
     """
@@ -220,49 +218,69 @@ class KaraokeView(QWidget):
 
         layout.addStretch()
 
-        self.record_btn = self._make_control_btn("⏺ Record", "record")
-        self.export_btn = self._make_control_btn("⤓ Export", "export")
-        self.export_btn.setEnabled(False)
+        self.record_btn = self._make_control_btn("⏺ Record")
+        self.end_btn = self._make_control_btn("⏹ End Karaoke", danger=True)
 
         layout.addWidget(self.record_btn)
-        layout.addWidget(self.export_btn)
+        layout.addWidget(self.end_btn)
 
         self.seek_back_btn.clicked.connect(lambda: self._seek(-5.0))
         self.pause_btn.clicked.connect(self._toggle_pause)
         self.seek_fwd_btn.clicked.connect(lambda: self._seek(+5.0))
         self.record_btn.clicked.connect(self._toggle_recording)
-        self.export_btn.clicked.connect(self._export_recording)
+        self.end_btn.clicked.connect(self._end_karaoke_early)
 
         self._control_bar = container
 
-    def _make_control_btn(self, text: str, name: str) -> QPushButton:
+    def _make_control_btn(self, text: str, danger: bool = False) -> QPushButton:
         btn = QPushButton(text)
-        btn.setObjectName(name)
         btn.setMinimumWidth(90)
         btn.setFixedHeight(40)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.06);
-                border: 1px solid rgba(255, 255, 255, 0.10);
-                border-radius: 20px;
-                color: white;
-                font-size: 13px;
-                font-weight: 500;
-                padding: 8px 16px;
-            }
-            QPushButton:hover {
-                background: rgba(180, 255, 57, 0.15);
-                border-color: rgba(180, 255, 57, 0.4);
-            }
-            QPushButton:pressed {
-                background: rgba(180, 255, 57, 0.25);
-            }
-            QPushButton:disabled {
-                color: rgba(255, 255, 255, 0.3);
-                background: rgba(255, 255, 255, 0.02);
-            }
-        """)
+
+        if danger:
+            style = """
+                QPushButton {
+                    background: rgba(255, 59, 48, 0.15);
+                    border: 1px solid rgba(255, 59, 48, 0.4);
+                    border-radius: 20px;
+                    color: white;
+                    font-size: 13px;
+                    font-weight: 500;
+                    padding: 8px 16px;
+                }
+                QPushButton:hover {
+                    background: rgba(255, 59, 48, 0.3);
+                    border-color: rgba(255, 59, 48, 0.7);
+                }
+                QPushButton:pressed {
+                    background: rgba(255, 59, 48, 0.4);
+                }
+            """
+        else:
+            style = """
+                QPushButton {
+                    background: rgba(255, 255, 255, 0.06);
+                    border: 1px solid rgba(255, 255, 255, 0.10);
+                    border-radius: 20px;
+                    color: white;
+                    font-size: 13px;
+                    font-weight: 500;
+                    padding: 8px 16px;
+                }
+                QPushButton:hover {
+                    background: rgba(180, 255, 57, 0.15);
+                    border-color: rgba(180, 255, 57, 0.4);
+                }
+                QPushButton:pressed {
+                    background: rgba(180, 255, 57, 0.25);
+                }
+                QPushButton:disabled {
+                    color: rgba(255, 255, 255, 0.3);
+                    background: rgba(255, 255, 255, 0.02);
+                }
+            """
+        btn.setStyleSheet(style)
         return btn
 
     def _seek(self, delta_sec: float) -> None:
@@ -285,47 +303,56 @@ class KaraokeView(QWidget):
             self.pause_btn.setText("⏸ Pause")
 
     def _toggle_recording(self) -> None:
+        """Toggle recording — audio auto-saves to library when session ends."""
         self.session.toggle_recording()
         if self.session.is_recording():
-            self.record_btn.setText("⏹ Stop")
-            self.record_btn.setStyleSheet(self.record_btn.styleSheet().replace(
-                "background: rgba(255, 255, 255, 0.06);",
-                "background: rgba(255, 59, 48, 0.3);",
-            ))
-            self.export_btn.setEnabled(False)
+            self.record_btn.setText("⏹ Recording...")
+            self.record_btn.setStyleSheet("""
+                QPushButton {
+                    background: rgba(255, 59, 48, 0.3);
+                    border: 1px solid rgba(255, 59, 48, 0.6);
+                    border-radius: 20px;
+                    color: white;
+                    font-size: 13px;
+                    font-weight: 600;
+                    padding: 8px 16px;
+                }
+                QPushButton:hover {
+                    background: rgba(255, 59, 48, 0.4);
+                }
+            """)
         else:
             self.record_btn.setText("⏺ Record")
-            self.export_btn.setEnabled(self.session.has_recording())
+            self.record_btn.setStyleSheet("""
+                QPushButton {
+                    background: rgba(255, 255, 255, 0.06);
+                    border: 1px solid rgba(255, 255, 255, 0.10);
+                    border-radius: 20px;
+                    color: white;
+                    font-size: 13px;
+                    font-weight: 500;
+                    padding: 8px 16px;
+                }
+                QPushButton:hover {
+                    background: rgba(180, 255, 57, 0.15);
+                    border-color: rgba(180, 255, 57, 0.4);
+                }
+            """)
 
-    def _export_recording(self) -> None:
-        """Export the recorded session as MP4."""
-        if not self.session.has_recording():
-            self._show_toast("Nothing to export")
-            return
+    def _end_karaoke_early(self) -> None:
+        """User clicked End Karaoke — stop and show partial results."""
+        from PyQt6.QtWidgets import QMessageBox
 
-        from pathlib import Path
-
-        from PyQt6.QtWidgets import QFileDialog
-
-        default_name = (
-            f"wrenify_{self.session.song.title.lower().replace(' ', '_')}"
-        )
-        output_path, _ = QFileDialog.getSaveFileName(
+        reply = QMessageBox.question(
             self,
-            "Export Recording",
-            str(Path.home() / default_name),
-            "MP4 Video (*.mp4);;WAV Audio (*.wav)",
+            "End Karaoke?",
+            "Stop now and see your score for the parts you've sung?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
 
-        if not output_path:
-            return
-
-        self._show_toast("Exporting... please wait")
-        result = self.session.export_recording(Path(output_path))
-        if result:
-            self._show_toast(f"Saved to {result.name}")
-        else:
-            self._show_toast("Export failed")
+        if reply == QMessageBox.StandardButton.Yes:
+            self.session.end_early()
 
     def _show_offset_toast(self, offset: float) -> None:
         """Show a temporary toast with current offset."""
@@ -371,25 +398,16 @@ class KaraokeView(QWidget):
         # 1. Draw webcam background (or dark bg if no webcam)
         self._draw_webcam(painter)
 
-        # 2. Draw dark overlay for text readability
-        painter.fillRect(
-            0, self.height() - 260, self.width(), 260,
-            QColor(0, 0, 0, 140)
-        )
-
-        # 3. Draw lyrics
+        # 2. Draw lyrics (outlined text — readable without any overlay)
         self._draw_lyrics(painter)
 
-        # 4. Draw progress bar
+        # 3. Draw progress bar
         self._draw_progress(painter)
 
-        # 5. Draw score bar
-        self._draw_score(painter)
-
-        # 6. Draw offset toast if active
+        # 4. Draw offset toast if active
         self._draw_offset_toast(painter)
 
-        # 7. Draw recording indicator if active
+        # 5. Draw recording indicator if active
         self._draw_recording_indicator(painter)
 
         painter.end()
@@ -529,13 +547,13 @@ class KaraokeView(QWidget):
         y: int,
         color: QColor,
     ) -> None:
-        """Draw text with black outline (like karaoke subtitles)."""
+        """Draw text with black outline — no background needed."""
         path = QPainterPath()
         path.addText(x, y, painter.font(), text)
 
-        # Outline
-        outline_pen = QPen(OUTLINE_COLOR)
-        outline_pen.setWidth(3)
+        # Thick outline for readability over any background
+        outline_pen = QPen(QColor(0, 0, 0, 240))
+        outline_pen.setWidth(5)
         outline_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(outline_pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -575,9 +593,6 @@ class KaraokeView(QWidget):
             f"{self._format_time(duration)}"
         )
         painter.drawText(bar_x, bar_y + 24, time_str)
-
-    def _draw_score(self, painter: QPainter) -> None:
-        """Score summary lives in the control bar's score label."""
 
     @staticmethod
     def _format_time(seconds: float) -> str:
