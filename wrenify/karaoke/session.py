@@ -243,6 +243,7 @@ class KaraokeSession(QObject):
             return None
 
         import numpy as np
+
         from wrenify.video.exporter import VideoExporter
 
         audio = np.concatenate(self._recorded_audio)
