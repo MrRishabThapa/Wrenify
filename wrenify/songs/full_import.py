@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
@@ -148,6 +149,80 @@ class FullSongImporter:
         return re.sub(r"[^\w]+", "-", raw.lower()).strip("-")
 
 
+# ────────────────────── URL support ──────────────────────
+
+def _is_url(value: str) -> bool:
+    """True if the input looks like a web URL rather than a file path."""
+    return value.strip().startswith(("http://", "https://"))
+
+
+def download_song_from_url(url: str, output_dir: Path) -> dict:
+    """
+    Download a song's audio from a YouTube URL and extract it to WAV.
+
+    Uses yt-dlp with the android/web_safari player clients (avoids the
+    YouTube 403 bot-check that the default client hits).
+
+    Returns:
+        dict with keys: path, title, artist, duration
+    """
+    from yt_dlp import YoutubeDL
+
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "format": "bestaudio/best",
+        "extractor_args": {
+            "youtube": {"player_client": ["android", "web_safari"]}
+        },
+    }
+
+    # 1. Pull metadata first (title/artist/duration) without downloading
+    with YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+
+    if info.get("_type") == "playlist":
+        entries = info.get("entries") or []
+        if not entries:
+            raise RuntimeError("Empty playlist — pass a single video URL")
+        info = entries[0]
+
+    title = info.get("title") or "Unknown"
+    artist = info.get("artist") or info.get("uploader") or "Unknown"
+    duration = info.get("duration") or 0
+
+    # Many uploads are titled "Artist - Song" — split for defaults
+    if artist == "Unknown" and " - " in title:
+        artist, title = title.split(" - ", 1)
+
+    # 2. Download best audio and extract to WAV
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    safe_base = re.sub(r"[^\w]+", "_", title.lower()).strip("_") or "song"
+    outtmpl = str(output_dir / f"{safe_base}.%(ext)s")
+
+    dl_opts = {
+        **opts,
+        "outtmpl": outtmpl,
+        "postprocessors": [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "wav",
+            }
+        ],
+    }
+    with YoutubeDL(dl_opts) as ydl:
+        ydl.download([url])
+
+    wav = output_dir / f"{safe_base}.wav"
+    if not wav.exists():
+        raise FileNotFoundError(f"Downloaded file missing: {wav}")
+
+    logger.success(f"Downloaded: {wav.name} ({duration:.0f}s)")
+    return {"path": wav, "title": title, "artist": artist, "duration": duration}
+
+
 # ────────────────────── CLI ──────────────────────
 
 if __name__ == "__main__":
@@ -162,43 +237,62 @@ if __name__ == "__main__":
     console.print("[dim]Demucs + Whisper = perfectly aligned karaoke[/dim]\n")
 
     if len(sys.argv) < 2:
-        console.print("[red]Usage:[/red] python -m wrenify.songs.full_import <song.mp3>")
+        console.print(
+            "[red]Usage:[/red] "
+            "python -m wrenify.songs.full_import <song.mp3 or YouTube URL>"
+        )
         sys.exit(1)
 
-    path = Path(sys.argv[1])
-    if not path.exists():
-        console.print(f"[red]Not found:[/red] {path}")
-        sys.exit(1)
+    source = sys.argv[1].strip()
 
-    title  = Prompt.ask("[cyan]Song title[/cyan]")
-    artist = Prompt.ask("[cyan]Artist[/cyan]")
-    album  = Prompt.ask("[cyan]Album (optional)[/cyan]", default="")
+    # Download from URL if given, otherwise require a local file
+    tmp_dir: Optional[Path] = None
+    try:
+        if _is_url(source):
+            console.print("[cyan]Downloading audio from URL...[/cyan]\n")
+            tmp_dir = Path(tempfile.mkdtemp(prefix="wrenify_import_"))
+            info = download_song_from_url(source, tmp_dir)
+            song_path = info["path"]
+            title  = Prompt.ask("[cyan]Song title[/cyan]", default=info["title"])
+            artist = Prompt.ask("[cyan]Artist[/cyan]", default=info["artist"])
+            album  = Prompt.ask("[cyan]Album (optional)[/cyan]", default="")
+        else:
+            song_path = Path(source)
+            if not song_path.exists():
+                console.print(f"[red]Not found:[/red] {song_path}")
+                sys.exit(1)
+            title  = Prompt.ask("[cyan]Song title[/cyan]")
+            artist = Prompt.ask("[cyan]Artist[/cyan]")
+            album  = Prompt.ask("[cyan]Album (optional)[/cyan]", default="")
 
-    console.print("\n[yellow]Estimated time: 5-15 minutes[/yellow]")
-    console.print("[dim]Close browser/heavy apps for best speed on 8GB RAM[/dim]\n")
+        console.print("\n[yellow]Estimated time: 5-15 minutes[/yellow]")
+        console.print("[dim]Close browser/heavy apps for best speed on 8GB RAM[/dim]\n")
 
-    if not Confirm.ask("Start import?", default=True):
-        sys.exit(0)
+        if not Confirm.ask("Start import?", default=True):
+            sys.exit(0)
 
-    importer = FullSongImporter()
+        importer = FullSongImporter()
 
-    with Progress(
-        SpinnerColumn(), TextColumn("{task.description}"),
-        BarColumn(), console=console,
-    ) as progress:
-        task = progress.add_task("Starting...", total=100)
+        with Progress(
+            SpinnerColumn(), TextColumn("{task.description}"),
+            BarColumn(), console=console,
+        ) as progress:
+            task = progress.add_task("Starting...", total=100)
 
-        def on_progress(msg: str, pct: float) -> None:
-            progress.update(task, completed=pct, description=msg[:70])
+            def on_progress(msg: str, pct: float) -> None:
+                progress.update(task, completed=pct, description=msg[:70])
 
-        try:
-            song = importer.import_song(
-                path, title, artist, album or None, on_progress
-            )
-            console.print(f"\n[green]Imported:[/green] {song.display_name}")
-            console.print(f"[dim]Folder: {song.instrumental_path.parent}[/dim]")
-            console.print("\n[cyan]Karaoke:[/cyan] wrenify -> option 11 -> pick these files")
-        except Exception as e:
-            console.print(f"\n[red]Failed:[/red] {e}")
-            import traceback
-            traceback.print_exc()
+            try:
+                song = importer.import_song(
+                    song_path, title, artist, album or None, on_progress
+                )
+                console.print(f"\n[green]Imported:[/green] {song.display_name}")
+                console.print(f"[dim]Folder: {song.instrumental_path.parent}[/dim]")
+                console.print("\n[cyan]Karaoke:[/cyan] wrenify -> option 11 -> pick these files")
+            except Exception as e:
+                console.print(f"\n[red]Failed:[/red] {e}")
+                import traceback
+                traceback.print_exc()
+    finally:
+        if tmp_dir is not None:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
