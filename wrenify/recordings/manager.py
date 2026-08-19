@@ -25,10 +25,12 @@ class RecordingsManager:
     Folder structure:
         recordings/
         └── ed-sheeran_perfect_2025-08-19_11-43-22/
-            ├── audio.wav             (raw mic)
-            ├── audio_autotuned.wav   (pitch-corrected, optional)
-            ├── video.mp4             (webcam + raw audio, optional)
-            ├── video_autotuned.mp4   (webcam + autotuned audio, optional)
+            ├── voice_raw.wav        (mic only)
+            ├── voice_autotuned.wav  (pitch-corrected mic, optional)
+            ├── mixed_raw.wav        (mic + music, optional)
+            ├── mixed_autotuned.wav  (autotuned mic + music, optional)
+            ├── video_raw.mp4        (webcam + mixed audio, optional)
+            ├── video_autotuned.mp4  (webcam + autotuned mix, optional)
             └── meta.json
     """
 
@@ -40,25 +42,30 @@ class RecordingsManager:
         self,
         song_title: str,
         song_artist: str,
-        audio_samples: np.ndarray,
         sample_rate: int,
+        voice_samples: np.ndarray,
+        voice_autotuned: Optional[np.ndarray] = None,
+        instrumental_samples: Optional[np.ndarray] = None,
         video_frames: Optional[list] = None,
-        autotuned_audio: Optional[np.ndarray] = None,
         video_fps: float = 24.0,
         score_data: Optional[dict] = None,
     ) -> Recording:
         """
-        Save a recording to the library.
+        Save a recording with all available audio versions.
 
         Args:
-            audio_samples: Raw microphone audio
-            autotuned_audio: Optional auto-tuned version of the audio
+            voice_samples: Raw microphone audio
+            voice_autotuned: Optional auto-tuned voice
+            instrumental_samples: Optional matching instrumental slice
+                          (enables mixed versions)
             video_frames: Optional webcam frames
             score_data: Score metadata
 
         Returns:
             Recording object pointing to saved files
         """
+        from wrenify.audio.mixer import AudioMixer
+
         now = datetime.utcnow()
         folder_name = self._make_folder_name(song_artist, song_title, now)
         folder = self.root / folder_name
@@ -66,39 +73,66 @@ class RecordingsManager:
 
         logger.info(f"Saving recording to: {folder}")
 
-        # Save raw audio
-        audio_path = folder / "audio.wav"
+        mixer = AudioMixer()
         import soundfile as sf
-        sf.write(str(audio_path), audio_samples, sample_rate)
-        logger.info(f"Saved raw audio: {audio_path.name}")
 
-        # Save autotuned audio if provided
-        autotuned_path: Optional[Path] = None
-        if autotuned_audio is not None:
-            autotuned_path = folder / "audio_autotuned.wav"
-            sf.write(str(autotuned_path), autotuned_audio, sample_rate)
-            logger.info(f"Saved autotuned audio: {autotuned_path.name}")
+        # ── 1. Voice only (raw) — always save ──
+        voice_raw_path = folder / "voice_raw.wav"
+        sf.write(str(voice_raw_path), voice_samples, sample_rate)
+        logger.info("Saved: voice_raw.wav")
 
-        # Save video(s) if frames provided
-        video_path: Optional[Path] = None
-        autotuned_video_path: Optional[Path] = None
+        # ── 2. Voice only (autotuned) — if provided ──
+        voice_autotuned_path: Optional[Path] = None
+        if voice_autotuned is not None:
+            voice_autotuned_path = folder / "voice_autotuned.wav"
+            sf.write(str(voice_autotuned_path), voice_autotuned, sample_rate)
+            logger.info("Saved: voice_autotuned.wav")
+
+        # ── 3. Mixed (voice + music, raw) — if instrumental provided ──
+        mixed_raw_path: Optional[Path] = None
+        if instrumental_samples is not None:
+            mixed_raw = mixer.mix(voice_samples, instrumental_samples)
+            mixed_raw_path = folder / "mixed_raw.wav"
+            sf.write(str(mixed_raw_path), mixed_raw, sample_rate)
+            logger.info("Saved: mixed_raw.wav")
+
+        # ── 4. Mixed (autotuned voice + music) — if both provided ──
+        mixed_autotuned_path: Optional[Path] = None
+        if instrumental_samples is not None and voice_autotuned is not None:
+            mixed_autotuned = mixer.mix(
+                voice_autotuned, instrumental_samples
+            )
+            mixed_autotuned_path = folder / "mixed_autotuned.wav"
+            sf.write(str(mixed_autotuned_path), mixed_autotuned, sample_rate)
+            logger.info("Saved: mixed_autotuned.wav")
+
+        # ── Video versions (if webcam captured) ──
+        video_raw_path: Optional[Path] = None
+        video_autotuned_path: Optional[Path] = None
 
         if video_frames:
-            video_path = folder / "video.mp4"
-            self._save_video(
-                video_frames, audio_samples, sample_rate,
-                video_path, video_fps,
+            # Video with mixed_raw audio (or voice_raw as fallback)
+            video_audio_source = (
+                mixed_raw_path if mixed_raw_path else voice_raw_path
+            )
+            video_raw_path = folder / "video_raw.mp4"
+            self._save_video_with_audio(
+                video_frames, video_audio_source, video_raw_path, video_fps,
             )
 
-            if autotuned_audio is not None:
-                autotuned_video_path = folder / "video_autotuned.mp4"
-                self._save_video(
-                    video_frames, autotuned_audio, sample_rate,
-                    autotuned_video_path, video_fps,
+            # Video with mixed_autotuned (or voice_autotuned) if available
+            if mixed_autotuned_path or voice_autotuned_path:
+                video_autotuned_source = (
+                    mixed_autotuned_path or voice_autotuned_path
+                )
+                video_autotuned_path = folder / "video_autotuned.mp4"
+                self._save_video_with_audio(
+                    video_frames, video_autotuned_source,
+                    video_autotuned_path, video_fps,
                 )
 
-        duration = len(audio_samples) / sample_rate
-
+        # Metadata
+        duration = len(voice_samples) / sample_rate
         score = score_data or {}
 
         recording = Recording(
@@ -108,10 +142,12 @@ class RecordingsManager:
             recorded_at=now,
             duration_sec=duration,
             folder=folder,
-            audio_path=audio_path,
-            autotuned_path=autotuned_path,
-            video_path=video_path,
-            autotuned_video_path=autotuned_video_path,
+            voice_raw_path=voice_raw_path,
+            voice_autotuned_path=voice_autotuned_path,
+            mixed_raw_path=mixed_raw_path,
+            mixed_autotuned_path=mixed_autotuned_path,
+            video_raw_path=video_raw_path,
+            video_autotuned_path=video_autotuned_path,
             grade=score.get("grade", "N/A"),
             score_pct=score.get("total_score", 0.0),
             correct_count=score.get("correct_count", 0),
@@ -126,28 +162,59 @@ class RecordingsManager:
         logger.success(f"Recording saved: {recording.display_name}")
         return recording
 
-    def _save_video(
+    def _save_video_with_audio(
         self,
         frames: list,
-        audio: np.ndarray,
-        sample_rate: int,
+        audio_path: Path,
         output_path: Path,
         fps: float,
     ) -> None:
-        """Save frames + audio as MP4 directly into the recording folder."""
-        from wrenify.video.exporter import VideoExporter
+        """Save frames as video, using audio from a WAV file."""
+        import subprocess
 
+        import cv2
+
+        # First: write silent video to temp file
+        temp_video = output_path.parent / f"_temp_{output_path.stem}.mp4"
+
+        if not frames:
+            return
+
+        first_frame = frames[0].image
+        height, width = first_frame.shape[:2]
+
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(
+            str(temp_video), fourcc, fps, (width, height)
+        )
+
+        for frame in frames:
+            writer.write(frame.image)
+        writer.release()
+
+        # Then: combine video + audio using ffmpeg
         try:
-            exporter = VideoExporter(output_dir=output_path.parent)
-            exporter.export(
-                frames=frames,
-                audio=audio,
-                sample_rate=sample_rate,
-                output_name=output_path.stem,
+            subprocess.run(
+                [
+                    "ffmpeg", "-y",
+                    "-i", str(temp_video),
+                    "-i", str(audio_path),
+                    "-c:v", "copy",
+                    "-c:a", "aac",
+                    "-shortest",
+                    str(output_path),
+                ],
+                capture_output=True,
+                check=True,
             )
-        except Exception as e:
-            logger.error(f"Video export failed: {e}")
-            raise
+            logger.info(f"Saved: {output_path.name}")
+        except subprocess.CalledProcessError as e:
+            logger.error(
+                f"ffmpeg failed: {e.stderr.decode() if e.stderr else e}"
+            )
+        finally:
+            if temp_video.exists():
+                temp_video.unlink()
 
     def list_all(self) -> list[Recording]:
         """Load all recordings from disk, newest first."""
@@ -183,20 +250,15 @@ class RecordingsManager:
         """Copy recording (video preferred) to external destination.
 
         Args:
-            version: "raw" or "autotuned"
+            version: one of "voice_raw", "voice_autotuned",
+                     "mixed_raw", "mixed_autotuned",
+                     "video_raw", "video_autotuned"
         """
         destination = Path(destination)
 
-        if version == "autotuned":
-            source = (
-                recording.autotuned_video_path
-                if recording.has_autotuned_video
-                else recording.autotuned_path
-            )
-            if source is None:
-                raise ValueError("Recording has no auto-tuned version")
-        else:
-            source = recording.video_path if recording.has_video else recording.audio_path
+        source = getattr(recording, f"{version}_path", None)
+        if source is None:
+            raise ValueError(f"Recording has no '{version}' version")
 
         # Preserve extension of source
         if destination.suffix == "":
