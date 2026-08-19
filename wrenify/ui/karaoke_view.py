@@ -16,24 +16,25 @@ import time
 from typing import Optional
 
 import cv2
-from PyQt6.QtCore import QRect, Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import (
     QBrush,
     QColor,
     QFont,
     QImage,
+    QKeySequence,
     QLinearGradient,
     QPainter,
     QPainterPath,
     QPen,
     QPixmap,
+    QShortcut,
 )
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
 from wrenify.karaoke.session import KaraokeSession
 from wrenify.karaoke.timeline import TrackedWord, WordState
 from wrenify.ui.voice_visualizer import VoiceVisualizer
-from wrenify.ui.theme import THEME
 
 # Color palette for word states
 STATE_COLORS: dict[WordState, QColor] = {
@@ -97,6 +98,31 @@ class KaraokeView(QWidget):
 
         self._small_font = QFont("Inter", 14)
 
+        # Bottom control bar
+        self._build_control_bar()
+
+        # Toast overlay (centered, temporary)
+        self._toast_label = QLabel(self)
+        self._toast_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._toast_label.setStyleSheet("""
+            color: #FFD700;
+            background: rgba(10, 10, 21, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 8px 20px;
+        """)
+        self._toast_label.hide()
+
+        # Robust keyboard shortcuts (work even when buttons have focus)
+        QShortcut(QKeySequence(Qt.Key.Key_R), self, self._toggle_recording)
+        QShortcut(QKeySequence(Qt.Key.Key_Space), self, self._toggle_pause)
+        QShortcut(QKeySequence(Qt.Key.Key_Left), self,
+                  lambda: self._nudge_lyrics(-0.5))
+        QShortcut(QKeySequence(Qt.Key.Key_Right), self,
+                  lambda: self._nudge_lyrics(+0.5))
+
     def _on_recording_toggled(self, is_recording: bool) -> None:
         """Show/hide the REC indicator overlay."""
         self._recording_indicator_visible = is_recording
@@ -111,6 +137,16 @@ class KaraokeView(QWidget):
             self.mini_viz.set_status("silent")
 
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        # Control bar pinned to the bottom
+        self._control_bar.setGeometry(
+            0, self.height() - 64, self.width(), 64
+        )
+
+        # Toast centered just above the control bar
+        self._toast_label.setGeometry(
+            self.width() // 2 - 150, self.height() - 100, 300, 36
+        )
+
         # Mini visualizer top-right
         viz_w = 200
         viz_h = 60
@@ -126,25 +162,170 @@ class KaraokeView(QWidget):
         key = event.key()
 
         if key == Qt.Key.Key_R:
-            self.session.toggle_recording()
+            self._toggle_recording()
         elif key == Qt.Key.Key_Left:
-            # Shift lyrics 0.5s EARLIER
-            new_offset = self.session.timeline.offset_sec - 0.5
-            self.session.timeline.set_offset(new_offset)
-            self._show_offset_toast(new_offset)
+            self._nudge_lyrics(-0.5)
         elif key == Qt.Key.Key_Right:
-            # Shift lyrics 0.5s LATER
-            new_offset = self.session.timeline.offset_sec + 0.5
-            self.session.timeline.set_offset(new_offset)
-            self._show_offset_toast(new_offset)
+            self._nudge_lyrics(+0.5)
         elif key == Qt.Key.Key_Space:
-            # Pause/resume
-            if self.session.player.is_playing():
-                self.session.pause()
-            else:
-                self.session.resume()
+            self._toggle_pause()
         else:
             super().keyPressEvent(event)
+
+    def _nudge_lyrics(self, delta: float) -> None:
+        """Shift lyrics timing by delta seconds (negative = earlier)."""
+        new_offset = self.session.timeline.offset_sec + delta
+        self.session.timeline.set_offset(new_offset)
+        self._show_offset_toast(new_offset)
+
+    def _show_toast(self, message: str) -> None:
+        """Show a temporary toast above the control bar."""
+        self._toast_label.setText(message)
+        self._toast_label.show()
+        self._toast_label.raise_()
+        QTimer.singleShot(2200, self._toast_label.hide)
+
+    # ───────────────── Control bar ─────────────────
+
+    CONTROL_BAR_HEIGHT: int = 64
+
+    def _build_control_bar(self) -> None:
+        """Bottom control bar with karaoke playback buttons."""
+        container = QWidget(self)
+        container.setFixedHeight(self.CONTROL_BAR_HEIGHT)
+        container.setStyleSheet("""
+            background: rgba(10, 10, 21, 0.85);
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+        """)
+
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(24, 8, 24, 8)
+        layout.setSpacing(8)
+
+        self.seek_back_btn = self._make_control_btn("⏮ 5s", "seek_back")
+        self.pause_btn = self._make_control_btn("⏸ Pause", "pause")
+        self.seek_fwd_btn = self._make_control_btn("⏭ 5s", "seek_fwd")
+
+        layout.addWidget(self.seek_back_btn)
+        layout.addWidget(self.pause_btn)
+        layout.addWidget(self.seek_fwd_btn)
+
+        layout.addStretch()
+
+        self.score_label = QLabel("Correct 0 · Wrong 0 · Missed 0")
+        self.score_label.setStyleSheet(
+            "color: rgba(255,255,255,0.7); font-size: 13px;"
+        )
+        layout.addWidget(self.score_label)
+
+        layout.addStretch()
+
+        self.record_btn = self._make_control_btn("⏺ Record", "record")
+        self.export_btn = self._make_control_btn("⤓ Export", "export")
+        self.export_btn.setEnabled(False)
+
+        layout.addWidget(self.record_btn)
+        layout.addWidget(self.export_btn)
+
+        self.seek_back_btn.clicked.connect(lambda: self._seek(-5.0))
+        self.pause_btn.clicked.connect(self._toggle_pause)
+        self.seek_fwd_btn.clicked.connect(lambda: self._seek(+5.0))
+        self.record_btn.clicked.connect(self._toggle_recording)
+        self.export_btn.clicked.connect(self._export_recording)
+
+        self._control_bar = container
+
+    def _make_control_btn(self, text: str, name: str) -> QPushButton:
+        btn = QPushButton(text)
+        btn.setObjectName(name)
+        btn.setMinimumWidth(90)
+        btn.setFixedHeight(40)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.06);
+                border: 1px solid rgba(255, 255, 255, 0.10);
+                border-radius: 20px;
+                color: white;
+                font-size: 13px;
+                font-weight: 500;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background: rgba(180, 255, 57, 0.15);
+                border-color: rgba(180, 255, 57, 0.4);
+            }
+            QPushButton:pressed {
+                background: rgba(180, 255, 57, 0.25);
+            }
+            QPushButton:disabled {
+                color: rgba(255, 255, 255, 0.3);
+                background: rgba(255, 255, 255, 0.02);
+            }
+        """)
+        return btn
+
+    def _seek(self, delta_sec: float) -> None:
+        """Seek forward or back by N seconds."""
+        if not self.session.player:
+            return
+        current = self.session.player.position_sec()
+        new_pos = max(0.0, min(
+            current + delta_sec, self.session.player.duration_sec()
+        ))
+        self.session.player.seek(new_pos)
+        self._show_toast(f"Seeked to {new_pos:.1f}s")
+
+    def _toggle_pause(self) -> None:
+        if self.session.player.is_playing():
+            self.session.pause()
+            self.pause_btn.setText("▶ Resume")
+        else:
+            self.session.resume()
+            self.pause_btn.setText("⏸ Pause")
+
+    def _toggle_recording(self) -> None:
+        self.session.toggle_recording()
+        if self.session.is_recording():
+            self.record_btn.setText("⏹ Stop")
+            self.record_btn.setStyleSheet(self.record_btn.styleSheet().replace(
+                "background: rgba(255, 255, 255, 0.06);",
+                "background: rgba(255, 59, 48, 0.3);",
+            ))
+            self.export_btn.setEnabled(False)
+        else:
+            self.record_btn.setText("⏺ Record")
+            self.export_btn.setEnabled(self.session.has_recording())
+
+    def _export_recording(self) -> None:
+        """Export the recorded session as MP4."""
+        if not self.session.has_recording():
+            self._show_toast("Nothing to export")
+            return
+
+        from pathlib import Path
+
+        from PyQt6.QtWidgets import QFileDialog
+
+        default_name = (
+            f"wrenify_{self.session.song.title.lower().replace(' ', '_')}"
+        )
+        output_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Recording",
+            str(Path.home() / default_name),
+            "MP4 Video (*.mp4);;WAV Audio (*.wav)",
+        )
+
+        if not output_path:
+            return
+
+        self._show_toast("Exporting... please wait")
+        result = self.session.export_recording(Path(output_path))
+        if result:
+            self._show_toast(f"Saved to {result.name}")
+        else:
+            self._show_toast("Export failed")
 
     def _show_offset_toast(self, offset: float) -> None:
         """Show a temporary toast with current offset."""
@@ -155,7 +336,18 @@ class KaraokeView(QWidget):
     def _on_tick(self, current_time: float) -> None:
         self._current_time = current_time
         self._update_webcam_frame()
+        self._update_score_label()
         self.update()
+
+    def _update_score_label(self) -> None:
+        """Refresh the live score text in the control bar."""
+        timeline = self.session.timeline
+        correct = sum(1 for w in timeline.words if w.state == WordState.CORRECT)
+        wrong   = sum(1 for w in timeline.words if w.state == WordState.WRONG)
+        missed  = sum(1 for w in timeline.words if w.state == WordState.MISSED)
+        self.score_label.setText(
+            f"Correct {correct} · Wrong {wrong} · Missed {missed}"
+        )
 
     def _update_webcam_frame(self) -> None:
         """Grab latest webcam frame and convert to QPixmap."""
@@ -264,7 +456,7 @@ class KaraokeView(QWidget):
 
         painter.setFont(self._lyric_font)
 
-        y_center = self.height() - 130
+        y_center = self.height() - self.CONTROL_BAR_HEIGHT - 130
 
         # Draw previous line (dimmer)
         if line_idx > 0:
@@ -376,11 +568,6 @@ class KaraokeView(QWidget):
         painter.drawRoundedRect(bar_x, bar_y, fill_w, bar_h, 999, 999)
 
         # Time label
-        # A bottom glass pill carries live scoring and shortcuts.
-        panel = QRect(24, self.height() - 64, self.width() - 48, 48)
-        painter.setPen(QPen(QColor(255, 255, 255, 35), 1))
-        painter.setBrush(QColor(10, 10, 21, 170))
-        painter.drawRoundedRect(panel, 20, 20)
         painter.setFont(self._small_font)
         painter.setPen(QColor(255, 255, 255, 200))
         time_str = (
@@ -390,24 +577,7 @@ class KaraokeView(QWidget):
         painter.drawText(bar_x, bar_y + 24, time_str)
 
     def _draw_score(self, painter: QPainter) -> None:
-        """Draw live score summary at bottom."""
-        timeline = self.session.timeline
-        correct = sum(1 for w in timeline.words if w.state == WordState.CORRECT)
-        wrong   = sum(1 for w in timeline.words if w.state == WordState.WRONG)
-        missed  = sum(1 for w in timeline.words if w.state == WordState.MISSED)
-
-        painter.setFont(self._small_font)
-        text = f"Correct: {correct}   Wrong: {wrong}   Missed: {missed}"
-        painter.setPen(QColor(255, 255, 255, 220))
-        painter.drawText(44, self.height() - 34, text)
-
-        # Keyboard hint (bottom-right, subtle)
-        hint_text = "R = Record  |  Space = Pause  |  ← → = Sync Lyrics"
-        painter.setFont(QFont("Inter", 10))
-        painter.setPen(QColor(255, 255, 255, 100))
-        painter.drawText(
-            self.width() - 390, self.height() - 34, hint_text
-        )
+        """Score summary lives in the control bar's score label."""
 
     @staticmethod
     def _format_time(seconds: float) -> str:
