@@ -2,12 +2,8 @@
 Wrenify — Karaoke view widget.
 
 Shows webcam feed as background with lyrics overlaid as subtitles.
-Words change color based on their state:
-    PENDING - white with black border
-    ACTIVE  - yellow
-    CORRECT - green
-    WRONG   - red
-    MISSED  - red
+The current lyric line is bright white, previous/next lines are
+dimmed. No scoring — just fun singing.
 """
 
 from __future__ import annotations
@@ -33,17 +29,7 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
 from wrenify.karaoke.session import KaraokeSession
-from wrenify.karaoke.timeline import TrackedWord, WordState
 from wrenify.ui.voice_visualizer import VoiceVisualizer
-
-# Color palette for word states
-STATE_COLORS: dict[WordState, QColor] = {
-    WordState.PENDING: QColor(255, 255, 255),   # White
-    WordState.ACTIVE:  QColor(180, 255, 57),    # Brand lime
-    WordState.CORRECT: QColor(76,  217, 100),   # Green
-    WordState.WRONG:   QColor(255, 59,  48),    # Red
-    WordState.MISSED:  QColor(255, 59,  48),    # Red
-}
 
 
 class KaraokeView(QWidget):
@@ -54,9 +40,8 @@ class KaraokeView(QWidget):
     1. Webcam frame (scaled to widget)
     2. Progress bar at top
     3. Previous line (dimmed, above)
-    4. Current line (highlighted words, center-bottom)
+    4. Current line (bright, center-bottom)
     5. Next line (dimmed, below)
-    6. Score bar at bottom
     """
 
     def __init__(self, session: KaraokeSession, parent: Optional[QWidget] = None) -> None:
@@ -200,9 +185,9 @@ class KaraokeView(QWidget):
         layout.setContentsMargins(24, 8, 24, 8)
         layout.setSpacing(8)
 
-        self.seek_back_btn = self._make_control_btn("⏮ 5s", "seek_back")
-        self.pause_btn = self._make_control_btn("⏸ Pause", "pause")
-        self.seek_fwd_btn = self._make_control_btn("⏭ 5s", "seek_fwd")
+        self.seek_back_btn = self._make_control_btn("⏮ 5s")
+        self.pause_btn = self._make_control_btn("⏸ Pause")
+        self.seek_fwd_btn = self._make_control_btn("⏭ 5s")
 
         layout.addWidget(self.seek_back_btn)
         layout.addWidget(self.pause_btn)
@@ -210,17 +195,19 @@ class KaraokeView(QWidget):
 
         layout.addStretch()
 
-        self.score_label = QLabel("Correct 0 · Wrong 0 · Missed 0")
-        self.score_label.setStyleSheet(
-            "color: rgba(255,255,255,0.7); font-size: 13px;"
+        self.song_label = QLabel(
+            f"{self.session.song.artist} — {self.session.song.title}"
         )
-        layout.addWidget(self.score_label)
+        self.song_label.setStyleSheet(
+            "color: rgba(255,255,255,0.75); font-size: 13px; font-weight: 500;"
+        )
+        layout.addWidget(self.song_label)
 
         layout.addStretch()
 
         self.record_btn = self._make_control_btn("⏺ Record")
         self.autotune_btn = self._make_control_btn("✨ Auto-Tune")
-        self.end_btn = self._make_control_btn("⏹ End Karaoke", danger=True)
+        self.end_btn = self._make_control_btn("⏹ End", danger=True)
 
         layout.addWidget(self.record_btn)
         layout.addWidget(self.autotune_btn)
@@ -399,13 +386,13 @@ class KaraokeView(QWidget):
         self.record_btn.setToolTip(status)
 
     def _end_karaoke_early(self) -> None:
-        """User clicked End Karaoke — stop and show partial results."""
+        """User clicked End — stop and save the recording."""
         from PyQt6.QtWidgets import QMessageBox
 
         reply = QMessageBox.question(
             self,
             "End Karaoke?",
-            "Stop now and see your score for the parts you've sung?",
+            "Stop now and save your recording?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -422,18 +409,7 @@ class KaraokeView(QWidget):
     def _on_tick(self, current_time: float) -> None:
         self._current_time = current_time
         self._update_webcam_frame()
-        self._update_score_label()
         self.update()
-
-    def _update_score_label(self) -> None:
-        """Refresh the live score text in the control bar."""
-        timeline = self.session.timeline
-        correct = sum(1 for w in timeline.words if w.state == WordState.CORRECT)
-        wrong   = sum(1 for w in timeline.words if w.state == WordState.WRONG)
-        missed  = sum(1 for w in timeline.words if w.state == WordState.MISSED)
-        self.score_label.setText(
-            f"Correct {correct} · Wrong {wrong} · Missed {missed}"
-        )
 
     def _update_webcam_frame(self) -> None:
         """Grab latest webcam frame and convert to QPixmap."""
@@ -523,80 +499,43 @@ class KaraokeView(QWidget):
         painter.drawPixmap(x, y, scaled)
 
     def _draw_lyrics(self, painter: QPainter) -> None:
-        """Draw current line centered, prev/next lines above/below."""
-        timeline = self.session.timeline
+        """Draw lyrics — current line bright, others dim. No scoring colors."""
+        tracker = self.session.lyric_tracker
+        visible = tracker.get_visible_lines(before=1, after=2)
 
-        # Get lines around current position
-        line_idx = timeline.lyrics.line_index_at(self._current_time)
-        if line_idx is None:
+        if not visible:
             return
 
         painter.setFont(self._lyric_font)
+        center_y = self.height() // 2 + 100  # Below vertical center
+        line_height = 60
 
-        y_center = self.height() - self.CONTROL_BAR_HEIGHT - 130
+        # Find current line index in visible list
+        current_pos = None
+        for i, (_, _, is_current) in enumerate(visible):
+            if is_current:
+                current_pos = i
+                break
 
-        # Draw previous line (dimmer)
-        if line_idx > 0:
-            prev_line_words = [
-                w for w in timeline.words if w.line_index == line_idx - 1
-            ]
-            self._draw_line_of_words(
-                painter, prev_line_words,
-                y=y_center - 60,
-                dim=True,
-            )
+        for i, (line_idx, text, is_current) in enumerate(visible):
+            # Position relative to current
+            if current_pos is not None:
+                y = center_y + (i - current_pos) * line_height
+            else:
+                y = center_y + i * line_height
 
-        # Draw current line
-        current_line_words = [
-            w for w in timeline.words if w.line_index == line_idx
-        ]
-        self._draw_line_of_words(
-            painter, current_line_words,
-            y=y_center,
-            dim=False,
-        )
+            # Color: current = white full opacity, others = white 40%
+            if is_current:
+                color = QColor(255, 255, 255, 255)
+            else:
+                color = QColor(255, 255, 255, 100)
 
-        # Draw next line
-        next_line_words = [
-            w for w in timeline.words if w.line_index == line_idx + 1
-        ]
-        if next_line_words:
-            self._draw_line_of_words(
-                painter, next_line_words,
-                y=y_center + 60,
-                dim=True,
-            )
+            # Center horizontally
+            metrics = painter.fontMetrics()
+            text_width = metrics.horizontalAdvance(text)
+            x = (self.width() - text_width) // 2
 
-    def _draw_line_of_words(
-        self,
-        painter: QPainter,
-        words: list[TrackedWord],
-        y: int,
-        dim: bool,
-    ) -> None:
-        """Draw a horizontal line of words with per-word colors."""
-        if not words:
-            return
-
-        # Measure total width to center the line
-        metrics = painter.fontMetrics()
-        space_width = metrics.horizontalAdvance(" ")
-        # USE display_text (may be stretched) instead of text
-        word_widths = [
-            metrics.horizontalAdvance(w.display_text) for w in words
-        ]
-        total_width = sum(word_widths) + space_width * (len(words) - 1)
-
-        x = (self.width() - total_width) // 2
-
-        for word, width in zip(words, word_widths):
-            color = STATE_COLORS.get(word.state, QColor(255, 255, 255))
-            if dim:
-                color = QColor(color.red(), color.green(), color.blue(), 80)
-
-            # Use display_text here too
-            self._draw_outlined_text(painter, word.display_text, x, y, color)
-            x += width + space_width
+            self._draw_outlined_text(painter, text, x, y, color)
 
     def _draw_outlined_text(
         self,
