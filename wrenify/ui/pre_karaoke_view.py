@@ -25,20 +25,23 @@ from typing import Optional
 import cv2
 import numpy as np
 from loguru import logger
-from PyQt6.QtCore import QRect, Qt, QThread, QTimer, pyqtSignal
+from PyQt6.QtCore import QPoint, QPointF, QRect, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import (
     QColor,
     QFont,
     QImage,
     QPainter,
+    QPainterPath,
     QPen,
     QPixmap,
+    QRadialGradient,
 )
 from PyQt6.QtWidgets import QLabel, QPushButton, QWidget
 
 from wrenify.audio.capture import AudioCapture
 from wrenify.songs.song import Song
 from wrenify.ui.voice_visualizer import VoiceVisualizer
+from wrenify.ui.theme import THEME
 from wrenify.video.camera import WebcamCapture
 from wrenify.vision.gestures import GestureDetector, HandGesture
 
@@ -127,7 +130,7 @@ class PreKaraokeView(QWidget):
     # ───────────────── UI ─────────────────
 
     def _build_ui(self) -> None:
-        self.setStyleSheet("background: #0A0A15; color: white;")
+        self.setStyleSheet("background: transparent; color: white;")
 
         # Mic level visualizer (always visible, even if webcam fails)
         self._viz = VoiceVisualizer(self)
@@ -135,36 +138,36 @@ class PreKaraokeView(QWidget):
         self._viz_label = QLabel("Mic level", self)
         self._viz_label.setFont(QFont("Inter", 10))
         self._viz_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._viz_label.setStyleSheet("color: rgba(143,138,169,180);")
+        self._viz_label.setStyleSheet(f"color: {THEME.colors.text_tertiary}; font-size: 11px;")
 
         # Buttons — smaller, refined
         self._start_btn = QPushButton("I'm Ready", self)
         self._start_btn.setFixedSize(160, 44)
-        self._start_btn.setStyleSheet(self._button_style("rgba(139,92,246,190)"))
+        self._start_btn.setStyleSheet(self._button_style("#8B5CF6", "white"))
         self._start_btn.clicked.connect(self._begin_countdown)
 
         self._cancel_btn = QPushButton("Back", self)
         self._cancel_btn.setFixedSize(120, 44)
-        self._cancel_btn.setStyleSheet(self._button_style("rgba(60,60,70,190)"))
+        self._cancel_btn.setStyleSheet(self._button_style("rgba(255,255,255,.07)", "white"))
         self._cancel_btn.clicked.connect(self._cancel)
 
     @staticmethod
-    def _button_style(bg: str) -> str:
+    def _button_style(bg: str, fg: str) -> str:
         return (
             f"QPushButton {{"
-            f"  background: {bg}; color: white; border-radius: 8px;"
-            f"  font-size: 14px; font-weight: medium; border: none;"
+            f"  background: {bg}; color: {fg}; border-radius: 999px;"
+            f"  font-size: 14px; font-weight: 600; border: 1px solid {THEME.colors.border_subtle};"
             f"}}"
-            f"QPushButton:hover {{ background: {bg.replace('190', '230')}; }}"
+            f"QPushButton:hover {{ border-color: {THEME.colors.border_hover}; background: {THEME.colors.glass_hi}; }}"
         )
 
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         """Position overlay child widgets."""
         w, h = self.width(), self.height()
 
-        # Voice visualizer bottom-left, subtle
-        self._viz.setGeometry(20, h - 70, 240, 50)
-        self._viz_label.setGeometry(20, h - 22, 240, 18)
+        # Voice visualizer sits within the painted glass panel at bottom-left.
+        self._viz.setGeometry(36, h - 82, 220, 42)
+        self._viz_label.setGeometry(32, h - 112, 230, 20)
 
         # Buttons bottom-center, just above the instruction pill
         btn_y = h - 175
@@ -180,7 +183,8 @@ class PreKaraokeView(QWidget):
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
 
         # 1. Background
-        painter.fillRect(self.rect(), QColor(10, 10, 21))
+        self._draw_ambient_background(painter)
+        self._draw_visualizer_panel(painter)
 
         # 2. Song title — small, elegant, top center
         self._draw_title(painter)
@@ -201,6 +205,24 @@ class PreKaraokeView(QWidget):
         self._draw_gesture_indicator(painter)
 
         painter.end()
+
+    def _draw_ambient_background(self, painter: QPainter) -> None:
+        painter.fillRect(self.rect(), QColor(10, 10, 21))
+        for x, y, scale, color in ((.16, .18, .60, QColor(139, 92, 246, 40)), (.84, .82, .50, QColor(180, 255, 57, 28))):
+            radius = int(min(self.width(), self.height()) * scale)
+            gradient = QRadialGradient(QPointF(int(self.width() * x), int(self.height() * y)), radius)
+            gradient.setColorAt(0, color)
+            edge = QColor(color); edge.setAlpha(0)
+            gradient.setColorAt(1, edge)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(gradient)
+            painter.drawEllipse(int(self.width() * x) - radius, int(self.height() * y) - radius, radius * 2, radius * 2)
+
+    def _draw_visualizer_panel(self, painter: QPainter) -> None:
+        panel = QRect(20, self.height() - 126, 252, 102)
+        painter.setPen(QPen(QColor(255, 255, 255, 30), 1))
+        painter.setBrush(QColor(255, 255, 255, 15))
+        painter.drawRoundedRect(panel, 16, 16)
 
     def _draw_title(self, painter: QPainter) -> None:
         """Song title — small, elegant, top center."""
@@ -241,27 +263,34 @@ class PreKaraokeView(QWidget):
         )
         x = (self.width() - scaled.width()) // 2
         y = (self.height() - scaled.height()) // 2
+        rect = QRect(x, y, scaled.width(), scaled.height())
+        path = QPainterPath()
+        path.addRoundedRect(rect, 20, 20)
+        painter.save()
+        painter.setClipPath(path)
         painter.drawPixmap(x, y, scaled)
-        return QRect(x, y, scaled.width(), scaled.height())
+        painter.restore()
+        painter.setPen(QPen(QColor(255, 255, 255, 42), 1))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(rect, 20, 20)
+        return rect
 
     def _draw_no_webcam_placeholder(self, painter: QPainter) -> QRect:
         """Draw an informative placeholder when webcam is unavailable."""
         rect = QRect(20, 110, self.width() - 40, self.height() - 240)
-        painter.fillRect(rect, QColor(30, 30, 45))
+        painter.setPen(QPen(QColor(255, 255, 255, 34), 1))
+        painter.setBrush(QColor(255, 255, 255, 15))
+        painter.drawRoundedRect(rect, 20, 20)
 
-        pen = QPen(QColor(80, 80, 100), 2, Qt.PenStyle.DashLine)
-        painter.setPen(pen)
+        # A simple camera glyph, painted from geometry so it remains crisp
+        # and consistent with the rest of the interface at every scale.
+        icon_x = rect.center().x() - 28
+        icon_y = rect.y() + rect.height() // 2 - 64
+        painter.setPen(QPen(QColor(180, 255, 57, 150), 2))
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRoundedRect(rect, 12, 12)
-
-        icon_font = QFont("Inter", 48)
-        painter.setFont(icon_font)
-        painter.setPen(QColor(120, 120, 140))
-        painter.drawText(
-            QRect(rect.x(), rect.y(), rect.width(), 90),
-            Qt.AlignmentFlag.AlignCenter,
-            "📷",
-        )
+        painter.drawRoundedRect(icon_x, icon_y + 8, 56, 38, 8, 8)
+        painter.drawRoundedRect(icon_x + 11, icon_y, 20, 12, 4, 4)
+        painter.drawEllipse(icon_x + 19, icon_y + 17, 18, 18)
 
         msg_font = QFont("Inter", 14)
         painter.setFont(msg_font)
@@ -384,8 +413,10 @@ class PreKaraokeView(QWidget):
         # Big centered countdown number — big but light
         if self._state in (PreKaraokeState.COUNTDOWN,
                            PreKaraokeState.STARTING):
-            font = QFont("Inter", 180, QFont.Weight.Light)
+            font = QFont("Inter", 180, QFont.Weight.Thin)
             painter.setFont(font)
+            painter.setPen(QPen(QColor(180, 255, 57, 55), 12))
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, text)
             painter.setPen(QColor(180, 255, 57, 230))
             painter.drawText(
                 self.rect(),
@@ -416,8 +447,8 @@ class PreKaraokeView(QWidget):
         pill_w = text_width + 40
         pill_h = text_height + 16
 
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(0, 0, 0, 100))
+        painter.setPen(QPen(QColor(180, 255, 57, 60), 1))
+        painter.setBrush(QColor(255, 255, 255, 20))
         painter.drawRoundedRect(pill_x, pill_y, pill_w, pill_h, pill_h // 2, pill_h // 2)
 
         painter.setPen(text_color)
