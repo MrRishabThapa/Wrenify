@@ -4,7 +4,7 @@
 
 # Wrenify
 
-**A local-first karaoke studio with real-time pitch correction.**
+**A local-first karaoke studio with pitch correction.**
 
 *Your voice. Perfected.*
 
@@ -23,12 +23,13 @@
 
 ## What is this?
 
-Wrenify is a **local desktop app** that lets you sing along to a song  
-and cleans up your voice in real-time using pitch correction (auto-tune).  
-It shows synced lyrics as you sing and can export the final performance  
-as an MP4 video with webcam overlay.
+Wrenify is a **local desktop karaoke app**. You pick a song from your
+library, sing along to the instrumental with synced lyrics on screen,
+and hit **Record** — your voice gets mixed with the music into a
+performance you can replay, auto-tune, and export.
 
 Everything runs **on your own machine**. No cloud. No account. No telemetry.
+No judging — there's no score, no grade. It's just for fun singing.
 
 ## Why?
 
@@ -43,37 +44,42 @@ real-time audio, DSP, threading, native UI, file I/O, video processing.
 
 ## Features
 
-- [x] 🎤 Real-time pitch correction using the WORLD vocoder
-- [x] 📝 Time-synced lyrics with word-level highlighting
-- [x] 🎨 Stylized display for held notes (e.g. `faaall-eeen  treeee`)
-- [x] 📹 Webcam capture during performance
-- [x] 🎬 Final export to MP4 with your corrected voice
+- [x] 🎤 Karaoke sessions: instrumental playback + synced lyric subtitles
+- [x] 📝 Time-synced lyrics with current-line highlighting (bright current, dimmed around)
+- [x] 📚 In-app song library with card grid (songs live in `songs/<slug>/`)
+- [x] 📥 One-URL song import (YouTube link or file path → Demucs stems + Whisper LRC)
+- [x] ⏺ Recordings library: every take auto-saves on session end
+- [x] 🎚️ Auto-tune toggle — pitch-corrects the voice (WORLD vocoder) before saving
+- [x] 🎵 Instrumental mixed into recordings — playback sounds like a real performance
+- [x] 🗂️ Up to 6 versions per recording (voice/mixed × raw/auto-tuned, + videos)
+- [x] 📦 Styled export dialog with a version matrix (Audio/Video, With Music/Voice Only)
+- [x] 📹 Webcam capture with video versions of your take
 - [x] 🎛️ Adjustable correction strength (natural → T-Pain)
 - [x] 🎹 Key and scale selection (major, minor, pentatonic, blues)
-- [x] 🏆 Live karaoke session with word matching and accuracy score
 - [x] 🐧 Runs on Linux, first-class support for Arch
 
 ## Current Status
 
-The core pipeline is **complete and working end-to-end** — you can run
-a full karaoke session (webcam + lyrics overlay + live scoring) right now.
+The core loop is **complete and working end-to-end** — import a song,
+sing it, save your take, export it. Most of the UI is real now, not placeholders.
 
-| Module              | Status         |
-| ------------------- | -------------- |
-| Project scaffold    | Done           |
-| Audio capture       | Done           |
-| Auto-tune engine    | Done           |
-| Effects rack        | Done           |
-| Webcam capture      | Done           |
-| MP4 export          | Done           |
-| Speech recognition  | Done           |
-| PyQt6 UI shell      | Done           |
-| Lyrics fetching     | Done           |
-| Lyrics sync UI      | Done           |
-| Karaoke scoring     | Done           |
-| Song library        | Planned        |
-| Effects rack panel  | Planned        |
-| Packaging / polish  | Planned        |
+| Module                 | Status         |
+| ---------------------- | -------------- |
+| Project scaffold       | Done           |
+| Audio capture          | Done           |
+| Auto-tune engine       | Done           |
+| Effects rack           | Done           |
+| Webcam capture         | Done           |
+| MP4 export (ffmpeg)    | Done           |
+| Lyrics fetching/parsing| Done           |
+| Song library + import  | Done           |
+| Karaoke session        | Done           |
+| Lyric line tracking    | Done           |
+| Recordings library     | Done           |
+| Music mixing           | Done           |
+| Export dialog matrix   | Done           |
+| Real-time auto-tune UI | Planned        |
+| Packaging / polish     | Planned        |
 
 Follow the commits to watch the project evolve.
 
@@ -87,9 +93,10 @@ Follow the commits to watch the project evolve.
 | Pitch engine    | pyworld (WORLD vocoder)         | Industry-grade quality          |
 | Audio analysis  | librosa                         | Solid pitch detection           |
 | Effects         | pedalboard                      | Spotify's audio processing lib  |
-| Speech-to-text  | faster-whisper                  | Word-level timestamps, offline |
+| Audio mixing    | numpy + soundfile               | Simple, dependency-free         |
+| Speech-to-text  | faster-whisper                  | Offline LRC generation on import|
 | Lyrics          | syncedlyrics + lyricsgenius     | Free, no keys required          |
-| Video           | OpenCV + moviepy                | Battle-tested                   |
+| Video           | OpenCV + ffmpeg                 | Battle-tested                   |
 | Package manager | Poetry                          | Feels like npm/yarn             |
 
 ## Installation
@@ -98,7 +105,8 @@ Follow the commits to watch the project evolve.
 
 - Python 3.11 or newer
 - A microphone
-- A webcam (optional, only for video export)
+- A webcam (optional, only for video versions)
+- ffmpeg on your PATH (for video export)
 - ~500 MB disk space
 - Linux, macOS, or Windows (developed on Arch Linux)
 
@@ -137,18 +145,12 @@ poetry install
 poetry shell
 ```
 
-### Optional: Whisper model for speech recognition
+### Optional: Whisper model for song import
 
-The `base` model is ~74 MB and works fine on 8GB systems:
-
-```bash
-mkdir -p models
-# The model downloads automatically on first use to models/whisper/
-```
-
-First run downloads the Whisper model (~74MB) to `models/whisper/`.
-Subsequent runs load it from cache. Set `WHISPER_MODEL` in `.env`
-to override (e.g. `small` for better accuracy on 16GB+ systems).
+Song import can generate a `.lrc` file from the vocals using Whisper.
+The `base` model (~74 MB) downloads automatically on first use to
+`models/whisper/`. You don't need it for karaoke or recording — only
+for importing songs without existing lyrics.
 
 ### Configuration
 
@@ -167,10 +169,10 @@ Get a free Genius API token at [genius.com/api-clients](https://genius.com/api-c
 ## Usage
 
 ```bash
-# Launch the app
+# Launch the app (GUI)
 poetry run wrenify
 
-# Or use the interactive CLI menu
+# Or the CLI menu (tests + app launcher)
 python -m wrenify
 
 # Test individual components
@@ -178,34 +180,66 @@ python wrenify/audio/capture.py                # Test your mic
 python wrenify/audio/autotune.py my_voice.wav  # Auto-tune a WAV file
 ```
 
-### Karaoke mode
+### Singing a song
 
-From the CLI menu, pick **11** and a file dialog asks for your
-instrumental (mp3/wav) and its synced `.lrc` lyrics (fetch one with
-menu option **9**). The ready screen shows a live webcam preview —
-raise an open palm then close it into a fist (or press **I'm Ready**)
-to start the 3-2-1 countdown. Then:
-
-- Your instrumental plays through the speakers while the webcam
-  shows behind lyric subtitles, highlighted in sync with the audio
-- Word colors: white = upcoming, yellow = now, green = sung correctly,
-  red = wrong or missed
-- A progress bar and a live correct/wrong/missed counter
-- Pause/resume keeps the music and lyrics in sync
-- The session ends when the song finishes, showing your accuracy
-  percentage and letter grade
+1. **Library** (sidebar → Songs) — pick a song card. Songs live in
+   `songs/<slug>/` as `instrumental.*` + `lyrics.lrc` (+ optional
+   `meta.json`, `cover.jpg`).
+2. **Import** (sidebar → Import) — paste a YouTube URL or a local file
+   path. The full pipeline splits vocals from the instrumental (Demucs)
+   and generates a synced `.lrc` (Whisper), then it appears in the library.
+3. **Ready screen** — live webcam preview; raise an open palm and close
+   it into a fist (or click **I'm Ready**) to start the 3-2-1 countdown.
+4. **Sing** — the instrumental plays while lyric subtitles highlight
+   in sync. Current line is bright white, previous/next lines dimmed —
+   no overlays, no colors to worry about.
+5. **Record** — press `R` or **⏺ Record** to capture your voice
+   (webcam frames too, if the camera is on). Toggle **✨ Auto-Tune**
+   before or during recording to pitch-correct the voice on save.
+6. **End** — the session ends when the song finishes, or via **⏹ End**.
+   Your take auto-saves to the recordings library.
 
 **Wear headphones** — otherwise the mic picks up the song audio and
-confuses the speech recognition, wrecking your score.
+bleeds into your recording.
 
-```bash
-# Fetch lyrics, save to exports/, then launch karaoke:
-poetry run python -m wrenify.lyrics.fetcher "Yellow" "Coldplay"
-poetry run wrenify        # → option 11 → pick instrumental + the .lrc
+### Recordings
+
+Every take is saved under `recordings/<artist>_<title>_<timestamp>/`:
+
+```
+├── voice_raw.wav        mic only
+├── voice_autotuned.wav  pitch-corrected mic (if auto-tune was on)
+├── mixed_raw.wav        voice + music          ← default playback
+├── mixed_autotuned.wav  auto-tuned voice + music
+├── video_raw.mp4        webcam + mixed audio   (if webcam)
+├── video_autotuned.mp4  webcam + autotuned mix (if webcam)
+└── meta.json
 ```
 
-Songs can also live in a folder: `instrumental.mp3` + `lyrics.lrc`
-(+ optional `meta.json`, `cover.jpg`) — see `Song.from_folder()`.
+The instrumental slice is matched to your recording using the song
+position when you pressed Record — so the mix lines up with the music.
+
+- **Playback** — cards show *With Music* and *Voice Only* buttons for
+  raw and auto-tuned versions.
+- **Export** — the ⤓ Export button opens a styled dialog with an
+  Audio/Video matrix; unavailable versions are grayed out.
+- **Delete** — with confirmation.
+
+Keyboard shortcuts during karaoke:
+
+| Key        | Action                    |
+| ---------- | ------------------------- |
+| `R`        | Start/stop recording      |
+| `Space`    | Pause/resume              |
+| `←` / `→`  | Nudge lyrics sync ±0.5s   |
+| `⏮ 5s` / `⏭ 5s` | Seek back/forward    |
+
+### CLI menu (python -m wrenify)
+
+Quick entry points for testing components: mic level, auto-tune a WAV,
+effects, webcam preview, video export, lyrics parse/fetch, phonetic
+stretcher, instrumental fetch, LRC generation, full song import, and
+the library listing. Option **11** launches the GUI.
 
 ## Project Structure
 
@@ -217,20 +251,22 @@ wrenify/
 ├── .env
 │
 └── wrenify/
-    ├── main.py               # Entry point
+    ├── main.py               # Entry point (banner + CLI menu)
     │
     ├── core/
-    │   ├── config.py         # All settings, one file
-    │   └── engine.py         # Master orchestrator
+    │   └── config.py         # All settings, one file
     │
     ├── audio/
     │   ├── capture.py        # Real-time mic input
     │   ├── autotune.py       # WORLD vocoder pitch correction
+    │   ├── mixer.py          # Voice + instrumental mixing
     │   ├── player.py         # Instrumental playback + position tracking
     │   └── effects.py        # Reverb, compression, EQ
     │
     ├── songs/
-    │   └── song.py           # Instrumental + lyrics pairing
+    │   ├── song.py           # Instrumental + lyrics pairing
+    │   ├── full_import.py    # Demucs + Whisper pipeline
+    │   └── lrc_generator.py  # Whisper → .lrc
     │
     ├── lyrics/
     │   ├── fetcher.py        # Fetch synced .lrc lyrics
@@ -238,26 +274,42 @@ wrenify/
     │   └── phonetic.py       # "fallen" → "faaall-eeen"
     │
     ├── karaoke/
-    │   ├── session.py        # Session orchestrator (audio+speech+video)
-    │   ├── timeline.py       # Word state machine + master clock
-    │   ├── matcher.py        # Fuzzy word matching (Levenshtein)
-    │   └── scorer.py         # Accuracy % and letter grades
+    │   ├── session.py        # Session orchestrator (audio + video)
+    │   ├── timeline.py       # Master clock + word timing
+    │   └── matcher.py        # LyricTracker — current line only, no scoring
+    │
+    ├── recordings/
+    │   ├── manager.py        # Save/load/delete recordings, video mux
+    │   └── models.py         # Recording model (6 version paths)
     │
     ├── speech/
-    │   └── recognizer.py     # faster-whisper offline STT
+    │   └── recognizer.py     # faster-whisper offline STT (import time)
     │
     ├── video/
     │   ├── camera.py         # OpenCV webcam
-    │   └── exporter.py       # Final MP4 export
+    │   └── exporter.py       # MP4 export
+    │
+    ├── vision/
+    │   └── gestures.py       # Palm/fist gesture for "I'm Ready"
     │
     ├── ui/
-    │   ├── app.py            # PyQt6 main window
+    │   ├── app.py            # PyQt6 main window + navigation
+    │   ├── library_view.py   # Song card grid
+    │   ├── import_view.py    # URL/path import with progress log
     │   ├── pre_karaoke_view.py # Ready screen (gesture + countdown)
-    │   ├── karaoke_view.py   # Webcam + lyric overlay
-    │   ├── results_view.py   # Final score screen
-    │   └── widgets.py        # Custom widgets
+    │   ├── karaoke_view.py   # Webcam + lyric overlay + control bar
+    │   ├── recordings_view.py# Recordings grid
+    │   ├── results_view.py   # SessionEndView — "Great session!"
+    │   ├── theme.py          # Colors, glass styling, global QSS
+    │   ├── voice_visualizer.py # Mic level bars
+    │   └── widgets/
+    │       ├── glass.py      # GlassCard, PillButton, GradientBackground
+    │       ├── song_card.py  # Library card
+    │       ├── recording_card.py # Recording card (play/export/delete)
+    │       ├── export_dialog.py  # Version matrix export dialog
+    │       └── log_panel.py  # Import progress log
     │
-    └── tests/
+    └── tests/                # Offscreen smoke tests
 ```
 
 ## Configuration
@@ -266,7 +318,7 @@ All defaults live in `wrenify/core/config.py`. The stuff you'll actually
 want to tweak:
 
 ```python
-# Auto-tune correction strength
+# Auto-tune correction strength (applied when saving recordings)
 CONFIG.autotune.strength = 0.7   # 0.0 = natural, 1.0 = T-Pain
 
 # Musical key and scale for correction
@@ -291,26 +343,25 @@ CONFIG.audio.chunk_size  = 4096
 - [x] Parse and display in real-time
 - [x] Phonetic stretching for held notes
 
-**Phase 3 — Speech alignment** *(done)*
-- [x] faster-whisper word recognition
-- [x] Match spoken words to lyric positions
-- [x] Highlight current word as you sing
+**Phase 3 — Karaoke sessions** *(done)*
+- [x] Instrumental playback + player-synced timeline
+- [x] Lyric line highlighting (no scoring — Wrenify is for fun)
+- [x] Webcam capture with gesture-triggered countdown
 
-**Phase 4 — UI**
-- [x] PyQt6 main window
-- [ ] Song search and library
-- [x] Live karaoke view
+**Phase 4 — Recording**
+- [x] Record mic + webcam during a session
+- [x] Auto-save to recordings library on session end
+- [x] Music mixing + auto-tune post-processing (6 versions)
+- [x] Styled export dialog with version matrix
+- [ ] Real-time auto-tune (currently applied on save)
+
+**Phase 5 — Song library**
+- [x] In-app library with song cards
+- [x] One-URL import (YouTube/file → Demucs + Whisper)
 - [ ] Effects rack panel
-
-**Phase 5 — Video export**
-- [x] Webcam capture
-- [ ] Composite video with lyrics overlay
-- [x] MP4 export via ffmpeg
+- [ ] Preset library (voice presets)
 
 **Phase 6 — Polish** *(current)*
-- [x] Song playback in karaoke mode
-- [ ] Preset library (voice presets)
-- [ ] Multi-track recording
 - [ ] AppImage / Flatpak packaging
 - [ ] Windows and macOS testing
 
@@ -332,13 +383,17 @@ poetry run pytest
 Those are great, but they're not open source, need internet, and I can't  
 tweak them. Wrenify is for me and anyone else who wants to own their setup.
 
+**Where's the scoring?**  
+There isn't any, by design. Singing badly is fun — Wrenify records your
+take, lets you auto-tune it, and never tells you off.
+
 **Will this work on my machine?**  
 Developed and tested on Arch Linux. Should work on Ubuntu, Fedora, macOS.  
 Windows is not a priority but might work.
 
 **Is my voice sent to any server?**  
 No. Everything runs locally. The only network calls are for fetching  
-lyrics (optional) if you provide a Genius API token.
+lyrics or importing songs (optional).
 
 **Can I use this commercially?**  
 Yes — it's MIT licensed. Just include the copyright notice.
