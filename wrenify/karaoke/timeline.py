@@ -55,9 +55,16 @@ class TrackedWord:
     resolved_at:  Optional[float] = None  # When it left ACTIVE state
     match_score:  float = 0.0             # 0.0 to 1.0, how well user matched
 
+    stretched_text: Optional[str] = None  # Cached stylized version
+
     @property
     def duration(self) -> float:
         return self.end - self.start
+
+    @property
+    def display_text(self) -> str:
+        """Return stretched version if available, else plain text."""
+        return self.stretched_text or self.text
 
 
 class Timeline:
@@ -99,10 +106,35 @@ class Timeline:
         self._player = player
         self._lock = Lock()
 
+        # NEW: apply phonetic stretching based on word durations
+        self._apply_stretching()
+
         logger.info(
             f"Timeline created with {len(self.words)} trackable words "
             f"({'player-synced' if player else 'clock-synced'})"
         )
+
+    def _apply_stretching(self) -> None:
+        """Compute stretched display text for all words based on duration."""
+        from wrenify.lyrics.phonetic import PhoneticStylizer, StretchOptions
+
+        # Slightly more aggressive stretching for karaoke display
+        stylizer = PhoneticStylizer(
+            StretchOptions(
+                min_duration_sec=0.4,       # Stretch even shorter holds
+                stretch_multiplier=3.0,     # A bit more visible
+                max_repeats=8,              # Cap so it stays readable
+            )
+        )
+
+        for word in self.words:
+            try:
+                word.stretched_text = stylizer.stylize_word(
+                    word.text, word.duration
+                )
+            except Exception as e:
+                logger.debug(f"Stretch failed for '{word.text}': {e}")
+                word.stretched_text = word.text
 
     def _build_tracked_words(self, lyrics: ParsedLyrics) -> list[TrackedWord]:
         """Flatten lyrics into a list of TrackedWord objects."""
