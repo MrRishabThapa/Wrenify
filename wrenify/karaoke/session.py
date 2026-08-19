@@ -4,10 +4,9 @@ Wrenify — Karaoke session orchestrator.
 Wires together all the pieces:
 - AudioPlayer (song playback through speakers)
 - AudioCapture (mic input)
-- StreamingRecognizer (speech-to-text)
 - WebcamCapture (video)
-- Timeline (state tracking, synced to the player)
-- WordMatcher (scoring logic)
+- Timeline (playback position, synced to the player)
+- LyricTracker (current line highlighting)
 
 Emits Qt signals for UI updates.
 """
@@ -23,13 +22,10 @@ from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from wrenify.audio.capture import AudioCapture
 from wrenify.audio.player import AudioPlayer
 from wrenify.core.config import CONFIG
-from wrenify.karaoke.matcher import WordMatcher
-from wrenify.karaoke.scorer import Scorer, ScoreReport
+from wrenify.karaoke.matcher import LyricTracker
 from wrenify.karaoke.timeline import Timeline
 from wrenify.lyrics.parser import LRCParser
 from wrenify.songs.song import Song
-from wrenify.speech.recognizer import Word
-from wrenify.speech.streaming import StreamingRecognizer
 from wrenify.video.camera import WebcamCapture
 
 
@@ -42,12 +38,12 @@ class KaraokeSession(QObject):
     in sync with the music.
 
     Emits:
-        tick_signal(float)        — every UI update tick (song time)
-        finished_signal(ScoreReport) — when session ends
+        tick_signal(float)      — every UI update tick (song time)
+        finished_signal         — when session ends
     """
 
     tick_signal     = pyqtSignal(float)
-    finished_signal = pyqtSignal(ScoreReport)
+    finished_signal = pyqtSignal()  # No arguments — no score to report
     audio_level_signal = pyqtSignal(float)  # RMS 0.0 to 1.0
     recording_toggled  = pyqtSignal(bool)   # True = recording, False = not
     autotune_toggled   = pyqtSignal(bool)   # True = autotune on save
@@ -81,8 +77,7 @@ class KaraokeSession(QObject):
             player=self.player,
             offset_sec=lyrics_offset_sec,
         )
-        self.matcher  = WordMatcher(self.timeline)
-        self.scorer   = Scorer()
+        self.lyric_tracker = LyricTracker(self.timeline)
 
         # Auto-stop point: prefer audio duration, fall back to the
         # last word's end time (some LRCs lack timing metadata).
@@ -91,7 +86,6 @@ class KaraokeSession(QObject):
         )
 
         self.audio_capture: Optional[AudioCapture] = None
-        self.streamer:      Optional[StreamingRecognizer] = None
         self.webcam:        Optional[WebcamCapture] = None
         self._audio_forwarder: Optional[QTimer] = None
 
@@ -137,30 +131,11 @@ class KaraokeSession(QObject):
             logger.warning(f"Mic unavailable: {e}")
             self.audio_capture = None
 
-        # Start the music (before Whisper warm-up so audio plays ASAP)
+        # Start the music
         self.player.play(start_position_sec=0.0)
         self._song_started = True
 
-        # Create initial prompt with song context and upcoming lyrics
-        all_lyrics_text = " ".join(w.text for w in self.timeline.words[:100])
-        prompt = (
-            f"Karaoke of '{self.song.title}' by {self.song.artist}. "
-            f"Lyrics: {all_lyrics_text}"
-        )
-
-        # Start streaming recognizer with matcher as callback
-        self.streamer = StreamingRecognizer(
-            on_words_callback=self._on_words_recognized,
-            initial_prompt=prompt,
-        )
-
-        # NEW: Give streamer access to current song time so Whisper's
-        # chunk-relative timestamps can be converted to song-relative.
-        self.streamer.set_song_time_provider(self.timeline.now)
-
-        self.streamer.start()
-
-        # Forward audio chunks to streamer (only if both are alive)
+        # Forward audio chunks for the mic visualizer + recording
         if self.audio_capture is not None:
             self._audio_forwarder = QTimer(self)
             self._audio_forwarder.setInterval(10)  # 100Hz polling
@@ -204,9 +179,6 @@ class KaraokeSession(QObject):
         # Stop the song
         self.player.stop()
 
-        if self.streamer is not None:
-            self.streamer.stop()
-            self.streamer = None
         if self.audio_capture is not None:
             self.audio_capture.stop()
             self.audio_capture = None
@@ -214,42 +186,32 @@ class KaraokeSession(QObject):
             self.webcam.stop()
             self.webcam = None
 
-        report = self.scorer.compute(self.timeline)
-        logger.info(f"Session finished: {report.summary}")
+        logger.info("Session finished")
 
         # Save recording to library if we recorded anything
         if self._recorded_audio:
             try:
-                self._save_recording(report, sample_rate)
+                self._save_recording(sample_rate)
             except Exception as e:
                 logger.error(f"Failed to save recording: {e}")
                 import traceback
 
                 traceback.print_exc()
 
-        self.finished_signal.emit(report)
+        self.finished_signal.emit()  # No args
 
     def end_early(self) -> None:
         """User-triggered early stop. Same as stop() but logged distinctly."""
         logger.info("User ended karaoke early")
         self.stop()
 
-    def _save_recording(self, report: ScoreReport, sample_rate: int) -> None:
+    def _save_recording(self, sample_rate: int) -> None:
         """Save recording with music mix and optional auto-tune."""
         from wrenify.audio.mixer import AudioMixer
         from wrenify.recordings.manager import RecordingsManager
 
         manager = RecordingsManager()
         voice_samples = np.concatenate(self._recorded_audio)
-
-        score_data = {
-            "grade":         report.grade,
-            "total_score":   report.total_score,
-            "correct_count": report.correct_count,
-            "wrong_count":   report.wrong_count,
-            "missed_count":  report.missed_count,
-            "total_words":   report.total_words,
-        }
 
         # Load matching instrumental slice
         instrumental_samples = None
@@ -296,7 +258,6 @@ class KaraokeSession(QObject):
             voice_autotuned=voice_autotuned,
             instrumental_samples=instrumental_samples,
             video_frames=self._recorded_frames or None,
-            score_data=score_data,
         )
         logger.success(f"Recording saved: {saved.folder.name}")
 
@@ -349,7 +310,6 @@ class KaraokeSession(QObject):
     def _on_tick(self) -> None:
         """Called ~30 times per second from UI timer."""
         current_time = self.timeline.now()
-        self.timeline.update_word_states(current_time)
         self.tick_signal.emit(current_time)
 
         # Record webcam frame if recording
@@ -394,7 +354,7 @@ class KaraokeSession(QObject):
         return self._is_recording
 
     def _forward_audio(self) -> None:
-        """Pull audio chunks from capture and forward to streamer."""
+        """Pull audio chunks from capture; emit level and record."""
         if self.audio_capture is None:
             return
 
@@ -403,21 +363,9 @@ class KaraokeSession(QObject):
             return
 
         # Emit level for UI visualizer
-        import numpy as np
         rms = float(np.sqrt(np.mean(chunk ** 2)))
         self.audio_level_signal.emit(rms)
 
         # Record if enabled
         if self._is_recording:
             self._recorded_audio.append(chunk.copy())
-
-        # Forward to Whisper
-        if self.streamer is not None:
-            self.streamer.push_audio(chunk)
-
-    def _on_words_recognized(self, words: list[Word]) -> None:
-        """Called from streaming recognizer thread."""
-        try:
-            self.matcher.match_recognized_words(words)
-        except Exception as e:
-            logger.error(f"Match error: {e}")
