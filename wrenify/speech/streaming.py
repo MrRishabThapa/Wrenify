@@ -49,12 +49,14 @@ class StreamingRecognizer:
     def __init__(
         self,
         on_words_callback: Optional[Callable[[list[Word]], None]] = None,
+        initial_prompt: Optional[str] = None,
     ) -> None:
         self.cfg = CONFIG.speech
         self.audio_cfg = CONFIG.audio
 
         self.recognizer = SpeechRecognizer()
         self.on_words = on_words_callback or (lambda words: None)
+        self.initial_prompt = initial_prompt
 
         # Audio buffer
         chunk_samples = int(
@@ -178,6 +180,7 @@ class StreamingRecognizer:
                 result = self.recognizer.transcribe_numpy(
                     audio,
                     sample_rate=self.audio_cfg.sample_rate,
+                    initial_prompt=self.initial_prompt,
                 )
                 elapsed = time.monotonic() - start
 
