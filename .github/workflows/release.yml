@@ -1,0 +1,116 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  build-linux-appimage:
+    name: Build Linux AppImage
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            echo "version=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3.11 \
+            python3.11-venv \
+            python3.11-dev \
+            ffmpeg \
+            portaudio19-dev \
+            libqt6-dev \
+            build-essential \
+            wget \
+            fuse \
+            libfuse2
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3.11 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install Wrenify dependencies
+        run: |
+          poetry env use python3.11
+          poetry install --no-interaction
+
+      - name: Install appimagetool
+        run: |
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          sudo mv appimagetool-x86_64.AppImage /usr/local/bin/appimagetool
+
+      - name: Build AppImage
+        run: |
+          chmod +x build/build_appimage.sh
+          ./build/build_appimage.sh ${{ steps.version.outputs.version }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wrenify-Linux-AppImage
+          path: dist/*.AppImage
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*.AppImage
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+
+  build-source-archive:
+    name: Build Source Archive
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install archive tools
+        run: sudo apt-get update && sudo apt-get install -y zip
+
+      - name: Create source archive
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF" ]; then
+            VERSION="dev"
+          fi
+
+          # Create clean archive without .git, node_modules, etc.
+          mkdir -p /tmp/wrenify-$VERSION
+          cp -r . /tmp/wrenify-$VERSION/
+          rm -rf /tmp/wrenify-$VERSION/.git
+          rm -rf /tmp/wrenify-$VERSION/dist
+          rm -rf /tmp/wrenify-$VERSION/build
+          rm -rf /tmp/wrenify-$VERSION/__pycache__
+
+          cd /tmp
+          tar -czf wrenify-$VERSION-source.tar.gz wrenify-$VERSION/
+          zip -qr wrenify-$VERSION-source.zip wrenify-$VERSION/
+
+          mkdir -p ${{ github.workspace }}/dist
+          mv wrenify-$VERSION-source.tar.gz ${{ github.workspace }}/dist/
+          mv wrenify-$VERSION-source.zip ${{ github.workspace }}/dist/
+
+      - name: Upload source archives
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/wrenify-*-source.tar.gz
+            dist/wrenify-*-source.zip
