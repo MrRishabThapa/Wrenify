@@ -105,11 +105,16 @@ class FullSongImporter:
             70,
         )
 
-        # Stage 2: Whisper LRC from isolated vocals
-        notify("Stage 2/3: Transcribing vocals for lyrics...", 75)
+        # Stage 2: Hybrid LRC — clean lyrics (Genius) + Whisper timing
+        notify("Stage 2/3: Fetching clean lyrics and aligning...", 75)
+
+        from wrenify.songs.lrc_generator import LRCMode
 
         lrc_config = LRCGeneratorConfig(
-            title=title, artist=artist, album=album
+            mode=LRCMode.HYBRID,  # Clean text + Whisper timing
+            title=title,
+            artist=artist,
+            album=album,
         )
 
         self.lrc_gen.generate_and_save(
