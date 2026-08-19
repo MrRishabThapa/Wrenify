@@ -28,7 +28,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from wrenify.audio.capture import AudioCapture
 from wrenify.songs.song import Song
+from wrenify.ui.voice_visualizer import VoiceVisualizer
 from wrenify.video.camera import WebcamCapture
 
 
@@ -52,6 +54,7 @@ class PreKaraokeView(QWidget):
         self.song = song
 
         self.webcam: Optional[WebcamCapture] = None
+        self.audio_capture: Optional[AudioCapture] = None
         self._gesture_state: str = "idle"
         self._palm_seen_at: Optional[float] = None
         self._countdown_value: int = self.COUNTDOWN_START
@@ -59,10 +62,15 @@ class PreKaraokeView(QWidget):
 
         self._build_ui()
         self._try_start_webcam()
+        self._try_start_mic()
 
         self._gesture_timer = QTimer(self)
         self._gesture_timer.setInterval(66)  # ~15fps
         self._gesture_timer.timeout.connect(self._on_gesture_frame)
+
+        self._mic_timer = QTimer(self)
+        self._mic_timer.setInterval(50)  # ~20fps
+        self._mic_timer.timeout.connect(self._on_mic_level)
 
         self._countdown_timer = QTimer(self)
         self._countdown_timer.setInterval(1000)
@@ -113,6 +121,20 @@ class PreKaraokeView(QWidget):
         self._hint.setStyleSheet("color: #cfcbe4;")
         layout.addWidget(self._hint)
 
+        # Mic level visualizer (always visible, even if webcam fails)
+        self._viz = VoiceVisualizer()
+        self._viz.setFixedSize(320, 70)
+        layout.addWidget(
+            self._viz, alignment=Qt.AlignmentFlag.AlignHCenter
+        )
+        self._viz_label = QLabel("Mic level")
+        self._viz_label.setFont(QFont("Inter", 11))
+        self._viz_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._viz_label.setStyleSheet("color: #8f8aa9;")
+        layout.addWidget(
+            self._viz_label, alignment=Qt.AlignmentFlag.AlignHCenter
+        )
+
         # Countdown label (hidden until triggered)
         self._countdown_label = QLabel("")
         self._countdown_label.setFont(QFont("Inter", 96, QFont.Weight.Black))
@@ -160,10 +182,54 @@ class PreKaraokeView(QWidget):
             logger.warning(f"Webcam unavailable on ready screen: {e}")
             self.webcam = None
             self._hint.setText("Webcam unavailable — press Start to begin")
-            self._preview.setText("No webcam")
+            self._draw_no_webcam_placeholder()
+
+    def _draw_no_webcam_placeholder(self) -> None:
+        """Show an informative placeholder when webcam is unavailable."""
+        self._preview.setText(
+            "📷\n\n"
+            "Webcam not available\n\n"
+            "Test with: cheese   or   ffplay /dev/video0\n"
+            "If those fail too, it is a driver/permission issue, "
+            "not Wrenify."
+        )
+        self._preview.setFont(QFont("Inter", 12))
+        self._preview.setStyleSheet(
+            "background: #16161f; border: 2px dashed #505064; "
+            "border-radius: 12px; color: #c8c8dc;"
+        )
+
+    def _try_start_mic(self) -> None:
+        """Start mic capture to feed the voice visualizer."""
+        try:
+            self.audio_capture = AudioCapture()
+            self.audio_capture.start()
+            self._mic_timer.start()
+        except Exception as e:
+            logger.warning(f"Mic unavailable on ready screen: {e}")
+            self.audio_capture = None
+            self._viz.set_status("silent")
+
+    def _on_mic_level(self) -> None:
+        """Poll mic chunks and push levels into the visualizer."""
+        if self.audio_capture is None:
+            return
+        chunk = self.audio_capture.get_chunk(timeout=0.0)
+        if chunk is None:
+            return
+        rms = float(np.sqrt(np.mean(chunk**2)))
+        self._viz.push_audio_level(rms)
+        if rms > 0.002:
+            self._viz.set_status("working")
+        else:
+            self._viz.set_status("silent")
 
     def _stop_webcam(self) -> None:
         self._gesture_timer.stop()
+        self._mic_timer.stop()
+        if self.audio_capture is not None:
+            self.audio_capture.stop()
+            self.audio_capture = None
         if self.webcam is not None:
             self.webcam.stop()
             self.webcam = None
