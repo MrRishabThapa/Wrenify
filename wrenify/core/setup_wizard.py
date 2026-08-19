@@ -13,17 +13,35 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from loguru import logger
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
+from wrenify.core.config import USER_CONFIG_DIR
+
 console = Console()
-SETUP_MARKER_FILE = Path.home() / ".config" / "wrenify" / "setup_complete"
+SETUP_MARKER_FILE = USER_CONFIG_DIR / "setup_complete"
 
 
 def is_first_run() -> bool:
-    """Check if this is the user's first time running Wrenify."""
-    return not SETUP_MARKER_FILE.exists()
+    """Check if setup has been completed (with backwards compat)."""
+    # Check new location
+    if SETUP_MARKER_FILE.exists():
+        return False
+
+    # Backwards compat: check old ~/.config/wrenify location (Linux only)
+    import platform
+    if platform.system() != "Windows":
+        old_marker = Path.home() / ".config" / "wrenify" / "setup_complete"
+        if old_marker.exists():
+            # Migrate to new location
+            SETUP_MARKER_FILE.parent.mkdir(parents=True, exist_ok=True)
+            SETUP_MARKER_FILE.touch()
+            logger.info("Migrated setup marker to new location")
+            return False
+
+    return True
 
 
 def mark_setup_complete() -> None:
