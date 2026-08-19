@@ -98,8 +98,10 @@ class Timeline:
         self,
         lyrics: ParsedLyrics,
         player: Optional["AudioPlayer"] = None,
+        offset_sec: float = 0.0,
     ) -> None:
         self.lyrics = lyrics
+        self.offset_sec = offset_sec  # Shifts all lyric timings
         self.words: list[TrackedWord] = self._build_tracked_words(lyrics)
         self._start_time: Optional[float] = None
         self._paused_at: Optional[float] = None
@@ -211,18 +213,25 @@ class Timeline:
         logger.info("Timeline stopped")
 
     def now(self) -> float:
-        """Get current song time in seconds."""
-        # Prefer player position if we have one
+        """Get current effective song time (accounts for user offset)."""
         if self._player is not None:
-            return self._player.position_sec()
+            raw_time = self._player.position_sec()
+        else:
+            with self._lock:
+                if self._start_time is None:
+                    return 0.0
+                if self._paused_at is not None:
+                    raw_time = self._paused_at - self._start_time - self._pause_offset
+                else:
+                    raw_time = time.monotonic() - self._start_time - self._pause_offset
 
-        # Fall back to wall clock
-        with self._lock:
-            if self._start_time is None:
-                return 0.0
-            if self._paused_at is not None:
-                return self._paused_at - self._start_time - self._pause_offset
-            return time.monotonic() - self._start_time - self._pause_offset
+        # Apply user-configured offset
+        return raw_time - self.offset_sec
+
+    def set_offset(self, offset_sec: float) -> None:
+        """Adjust lyric timing. Positive = show lyrics LATER."""
+        self.offset_sec = offset_sec
+        logger.info(f"Lyric offset set to {offset_sec:+.2f}s")
 
     def update_word_states(self, current_time: Optional[float] = None) -> None:
         """
