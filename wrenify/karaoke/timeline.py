@@ -1,23 +1,14 @@
 """
-Wrenify — Karaoke timeline and word state tracking.
+Wrenify — Karaoke timeline (music position tracking).
 
-The Timeline is the source of truth for:
-- Current position in the song (in seconds)
-- What state each word is in (pending, active, correct, etc.)
-- When to transition words between states
-
-State transitions:
-    PENDING -> ACTIVE   when song time enters word's time window
-    ACTIVE  -> CORRECT  when user sings it correctly
-    ACTIVE  -> WRONG    when user sings wrong word
-    ACTIVE  -> MISSED   when time window ends and no input received
+Tracks the current playback position and provides lyric line lookup.
+No state machine, no scoring — just clean timing.
 """
 
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from enum import Enum
 from threading import Lock
 from typing import TYPE_CHECKING, Optional
 
@@ -29,33 +20,15 @@ if TYPE_CHECKING:
     from wrenify.audio.player import AudioPlayer
 
 
-class WordState(Enum):
-    """State of a single word in the karaoke session."""
-
-    PENDING = "pending"    # Not sung yet
-    ACTIVE  = "active"     # Song is here right now
-    CORRECT = "correct"    # User sang correctly
-    WRONG   = "wrong"      # User sang wrong / mispronounced
-    MISSED  = "missed"     # User did not sing during time window
-
-
 @dataclass
 class TrackedWord:
-    """A lyric word with karaoke state tracking."""
+    """A lyric word with timing info (no state tracking)."""
 
     text:       str
-    start:      float                  # Song time when word starts
-    end:        float                  # Song time when word ends
-    line_index: int                    # Which line this word belongs to
-    word_index: int                    # Position within the line
-    state:      WordState = WordState.PENDING
-
-    # Timing data for scoring
-    activated_at: Optional[float] = None  # When it became ACTIVE
-    resolved_at:  Optional[float] = None  # When it left ACTIVE state
-    match_score:  float = 0.0             # 0.0 to 1.0, how well user matched
-
-    stretched_text: Optional[str] = None  # Cached stylized version
+    start:      float
+    end:        float
+    line_index: int
+    word_index: int
 
     @property
     def duration(self) -> float:
@@ -63,36 +36,11 @@ class TrackedWord:
 
     @property
     def display_text(self) -> str:
-        """Return stretched version if available, else plain text."""
-        return self.stretched_text or self.text
+        return self.text  # No stretching logic here anymore
 
 
 class Timeline:
-    """
-    Master clock and state tracker for a karaoke session.
-
-    When an AudioPlayer is provided, song time tracks the actual
-    audio position (pause/resume/seek all stay in sync). Without
-    one it falls back to a wall-clock monotonic timer.
-
-    Thread-safe: state can be updated from speech recognition thread
-    while read from the UI thread.
-
-    Usage:
-        timeline = Timeline(lyrics)
-        timeline.start()
-
-        # From audio playback thread:
-        song_time = timeline.now()
-
-        # From UI thread:
-        for word in timeline.words_in_window(song_time):
-            render(word)
-    """
-
-    # How far ahead/behind a sung word can be to still count.
-    # 3.0s accommodates Whisper's ~1-2s transcription latency.
-    MATCH_WINDOW_SEC: float = 3.0
+    """Song position tracker synced to audio player."""
 
     def __init__(
         self,
@@ -101,66 +49,37 @@ class Timeline:
         offset_sec: float = 0.0,
     ) -> None:
         self.lyrics = lyrics
-        self.offset_sec = offset_sec  # Shifts all lyric timings
-        self.words: list[TrackedWord] = self._build_tracked_words(lyrics)
+        self.offset_sec = offset_sec
+        self._player = player
         self._start_time: Optional[float] = None
         self._paused_at: Optional[float] = None
         self._pause_offset: float = 0.0
-        self._player = player
         self._lock = Lock()
 
-        # NEW: apply phonetic stretching based on word durations
-        self._apply_stretching()
+        # Flatten words for easy iteration
+        self.words: list[TrackedWord] = self._build_tracked_words()
 
         logger.info(
-            f"Timeline created with {len(self.words)} trackable words "
+            f"Timeline created with {len(self.words)} words "
             f"({'player-synced' if player else 'clock-synced'})"
         )
 
-    def _apply_stretching(self) -> None:
-        """Compute stretched display text for all words based on duration."""
-        from wrenify.lyrics.phonetic import PhoneticStylizer, StretchOptions
-
-        # Slightly more aggressive stretching for karaoke display
-        stylizer = PhoneticStylizer(
-            StretchOptions(
-                min_duration_sec=0.4,       # Stretch even shorter holds
-                stretch_multiplier=3.0,     # A bit more visible
-                max_repeats=8,              # Cap so it stays readable
-            )
-        )
-
-        for word in self.words:
-            try:
-                word.stretched_text = stylizer.stylize_word(
-                    word.text, word.duration
-                )
-            except Exception as e:
-                logger.debug(f"Stretch failed for '{word.text}': {e}")
-                word.stretched_text = word.text
-
-    def _build_tracked_words(self, lyrics: ParsedLyrics) -> list[TrackedWord]:
-        """Flatten lyrics into a list of TrackedWord objects."""
+    def _build_tracked_words(self) -> list[TrackedWord]:
         tracked: list[TrackedWord] = []
 
-        for line_idx, line in enumerate(lyrics.lines):
+        for line_idx, line in enumerate(self.lyrics.lines):
             if not line.text:
                 continue
-
-            # Use word-level timing if available
             if line.has_word_timing:
                 for word_idx, word in enumerate(line.words):
-                    tracked.append(
-                        TrackedWord(
-                            text=word.text,
-                            start=word.start,
-                            end=word.end or (word.start + 1.0),
-                            line_index=line_idx,
-                            word_index=word_idx,
-                        )
-                    )
+                    tracked.append(TrackedWord(
+                        text=word.text,
+                        start=word.start,
+                        end=word.end or (word.start + 1.0),
+                        line_index=line_idx,
+                        word_index=word_idx,
+                    ))
             else:
-                # Split line into words and estimate timing evenly
                 words = line.text.split()
                 if not words:
                     continue
@@ -168,20 +87,16 @@ class Timeline:
                 per_word = line_dur / len(words)
                 for word_idx, w in enumerate(words):
                     start = line.start + word_idx * per_word
-                    tracked.append(
-                        TrackedWord(
-                            text=w,
-                            start=start,
-                            end=start + per_word,
-                            line_index=line_idx,
-                            word_index=word_idx,
-                        )
-                    )
-
+                    tracked.append(TrackedWord(
+                        text=w,
+                        start=start,
+                        end=start + per_word,
+                        line_index=line_idx,
+                        word_index=word_idx,
+                    ))
         return tracked
 
     def start(self) -> None:
-        """Start the timeline clock."""
         with self._lock:
             self._start_time = time.monotonic()
             self._paused_at = None
@@ -189,125 +104,37 @@ class Timeline:
         logger.info("Timeline started")
 
     def pause(self) -> None:
-        """Pause the clock."""
         with self._lock:
             if self._start_time is None or self._paused_at is not None:
                 return
             self._paused_at = time.monotonic()
-        logger.info("Timeline paused")
 
     def resume(self) -> None:
-        """Resume from a pause."""
         with self._lock:
             if self._paused_at is None:
                 return
             self._pause_offset += time.monotonic() - self._paused_at
             self._paused_at = None
-        logger.info("Timeline resumed")
 
     def stop(self) -> None:
-        """Stop the timeline."""
         with self._lock:
             self._start_time = None
-            self._paused_at = None
-        logger.info("Timeline stopped")
 
     def now(self) -> float:
-        """Get current effective song time (accounts for user offset)."""
         if self._player is not None:
-            raw_time = self._player.position_sec()
-        else:
-            with self._lock:
-                if self._start_time is None:
-                    return 0.0
-                if self._paused_at is not None:
-                    raw_time = self._paused_at - self._start_time - self._pause_offset
-                else:
-                    raw_time = time.monotonic() - self._start_time - self._pause_offset
-
-        # Apply user-configured offset
-        return raw_time - self.offset_sec
+            return self._player.position_sec() - self.offset_sec
+        with self._lock:
+            if self._start_time is None:
+                return 0.0
+            if self._paused_at is not None:
+                base = self._paused_at - self._start_time - self._pause_offset
+            else:
+                base = time.monotonic() - self._start_time - self._pause_offset
+            return base - self.offset_sec
 
     def set_offset(self, offset_sec: float) -> None:
-        """Adjust lyric timing. Positive = show lyrics LATER."""
         self.offset_sec = offset_sec
-        logger.info(f"Lyric offset set to {offset_sec:+.2f}s")
-
-    def update_word_states(self, current_time: Optional[float] = None) -> None:
-        """
-        Advance word states based on current time.
-
-        Called every frame from the UI. Handles PENDING -> ACTIVE
-        and ACTIVE -> MISSED transitions.
-        """
-        now = current_time if current_time is not None else self.now()
-
-        with self._lock:
-            for word in self.words:
-                if word.state == WordState.PENDING:
-                    if word.start <= now <= word.end:
-                        word.state = WordState.ACTIVE
-                        word.activated_at = now
-
-                elif word.state == WordState.ACTIVE:
-                    if now > word.end + 0.5:  # 500ms grace period
-                        word.state = WordState.MISSED
-                        word.resolved_at = now
-
-    def mark_word_correct(self, word: TrackedWord, match_score: float) -> None:
-        """Mark a word as correctly sung."""
-        resolved_at = self.now()
-        with self._lock:
-            # Allow retroactive scoring — Whisper may be late
-            if word.state in (
-                WordState.PENDING, WordState.ACTIVE, WordState.MISSED
-            ):
-                word.state = WordState.CORRECT
-                word.match_score = match_score
-                word.resolved_at = resolved_at
-
-    def mark_word_wrong(self, word: TrackedWord, match_score: float) -> None:
-        """Mark a word as sung incorrectly."""
-        resolved_at = self.now()
-        with self._lock:
-            # Allow retroactive scoring — Whisper may be late
-            if word.state in (
-                WordState.PENDING, WordState.ACTIVE, WordState.MISSED
-            ):
-                word.state = WordState.WRONG
-                word.match_score = match_score
-                word.resolved_at = resolved_at
-
-    def words_in_window(
-        self,
-        current_time: Optional[float] = None,
-        before_sec: float = 2.0,
-        after_sec: float = 6.0,
-    ) -> list[TrackedWord]:
-        """Get words visible in the current display window."""
-        now = current_time if current_time is not None else self.now()
-        window_start = now - before_sec
-        window_end = now + after_sec
-
-        with self._lock:
-            return [
-                w for w in self.words
-                if w.start >= window_start and w.start <= window_end
-            ]
-
-    def find_matchable_words(self, current_time: float) -> list[TrackedWord]:
-        """Get words that a recognized speech should try to match against."""
-        with self._lock:
-            return [
-                w for w in self.words
-                if w.state in (WordState.ACTIVE, WordState.PENDING)
-                and abs(w.start - current_time) <= self.MATCH_WINDOW_SEC
-            ]
+        logger.info(f"Lyric offset: {offset_sec:+.2f}s")
 
     def total_words(self) -> int:
         return len(self.words)
-
-    def is_finished(self) -> bool:
-        """True if all words have been resolved."""
-        with self._lock:
-            return all(w.state != WordState.PENDING for w in self.words)
