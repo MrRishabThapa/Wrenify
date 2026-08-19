@@ -106,10 +106,13 @@ class KaraokeSession(QObject):
         self._is_recording = False
         self._recorded_audio: list[np.ndarray] = []
         self._recorded_frames: list = []  # Frame objects from webcam
-        self._recorded_sample_rate: int = CONFIG.audio.sample_rate
 
         # Post-processing toggle: apply auto-tune on save
         self._autotune_enabled: bool = False
+
+        # Song-time when recording started/stopped (for music mixing)
+        self._recording_start_song_time: float = 0.0
+        self._recording_end_song_time: float = 0.0
 
     def start(self) -> None:
         """Start the karaoke session."""
@@ -173,6 +176,16 @@ class KaraokeSession(QObject):
         """Stop the session, save any recording, and emit final score."""
         if not self._running:
             return
+
+        # If still recording when session ends, capture end time
+        if self._is_recording:
+            self._recording_end_song_time = self.timeline.now()
+            self._is_recording = False
+            logger.info(
+                f"Recording STOPPED at song time "
+                f"{self._recording_end_song_time:.2f}s (session end)"
+            )
+
         logger.info("Stopping karaoke session")
 
         self._running = False
@@ -206,7 +219,13 @@ class KaraokeSession(QObject):
 
         # Save recording to library if we recorded anything
         if self._recorded_audio:
-            self._save_recording(report, sample_rate)
+            try:
+                self._save_recording(report, sample_rate)
+            except Exception as e:
+                logger.error(f"Failed to save recording: {e}")
+                import traceback
+
+                traceback.print_exc()
 
         self.finished_signal.emit(report)
 
@@ -216,46 +235,70 @@ class KaraokeSession(QObject):
         self.stop()
 
     def _save_recording(self, report: ScoreReport, sample_rate: int) -> None:
-        """Persist the captured performance to the recordings library."""
+        """Save recording with music mix and optional auto-tune."""
+        from wrenify.audio.mixer import AudioMixer
+        from wrenify.recordings.manager import RecordingsManager
+
+        manager = RecordingsManager()
+        voice_samples = np.concatenate(self._recorded_audio)
+
+        score_data = {
+            "grade":         report.grade,
+            "total_score":   report.total_score,
+            "correct_count": report.correct_count,
+            "wrong_count":   report.wrong_count,
+            "missed_count":  report.missed_count,
+            "total_words":   report.total_words,
+        }
+
+        # Load matching instrumental slice
+        instrumental_samples = None
         try:
-            from wrenify.recordings.manager import RecordingsManager
-
-            manager = RecordingsManager()
-            audio_samples = np.concatenate(self._recorded_audio)
-
-            score_data = {
-                "grade":         report.grade,
-                "total_score":   report.total_score,
-                "correct_count": report.correct_count,
-                "wrong_count":   report.wrong_count,
-                "missed_count":  report.missed_count,
-                "total_words":   report.total_words,
-            }
-
-            # Apply auto-tune if enabled
-            autotuned_audio = None
-            if self._autotune_enabled:
-                try:
-                    autotuned_audio = self._process_autotune(
-                        audio_samples, sample_rate
-                    )
-                    logger.success("Auto-tune applied to recording")
-                except Exception as e:
-                    logger.error(f"Auto-tune failed: {e}")
-                    # Continue saving raw only
-
-            saved_recording = manager.save(
-                song_title=self.song.title,
-                song_artist=self.song.artist,
-                audio_samples=audio_samples,
-                sample_rate=sample_rate,
-                autotuned_audio=autotuned_audio,
-                video_frames=self._recorded_frames or None,
-                score_data=score_data,
+            mixer = AudioMixer()
+            recording_duration = len(voice_samples) / sample_rate
+            instrumental_samples, inst_sr = mixer.load_instrumental_slice(
+                instrumental_path=self.song.instrumental_path,
+                start_sec=self._recording_start_song_time,
+                duration_sec=recording_duration,
             )
-            logger.success(f"Recording saved: {saved_recording.folder.name}")
+
+            # Resample instrumental if sample rates differ
+            if inst_sr != sample_rate:
+                import librosa
+
+                instrumental_samples = librosa.resample(
+                    instrumental_samples,
+                    orig_sr=inst_sr,
+                    target_sr=sample_rate,
+                )
+
+            logger.success("Loaded instrumental slice for mixing")
         except Exception as e:
-            logger.error(f"Failed to save recording: {e}")
+            logger.error(f"Could not load instrumental for mixing: {e}")
+            # Continue without mixing — will save voice-only versions
+
+        # Auto-tune voice if enabled
+        voice_autotuned = None
+        if self._autotune_enabled:
+            try:
+                voice_autotuned = self._process_autotune(
+                    voice_samples, sample_rate
+                )
+                logger.success("Auto-tune applied to voice")
+            except Exception as e:
+                logger.error(f"Auto-tune failed: {e}")
+
+        saved = manager.save(
+            song_title=self.song.title,
+            song_artist=self.song.artist,
+            sample_rate=sample_rate,
+            voice_samples=voice_samples,
+            voice_autotuned=voice_autotuned,
+            instrumental_samples=instrumental_samples,
+            video_frames=self._recorded_frames or None,
+            score_data=score_data,
+        )
+        logger.success(f"Recording saved: {saved.folder.name}")
 
     def _process_autotune(
         self, audio: np.ndarray, sample_rate: int
@@ -324,14 +367,28 @@ class KaraokeSession(QObject):
         """Toggle recording on/off during session."""
         self._is_recording = not self._is_recording
         self.recording_toggled.emit(self._is_recording)
+
         if self._is_recording:
-            logger.info("Recording STARTED")
+            # Capture WHERE in song we started recording
+            self._recording_start_song_time = self.timeline.now()
+            logger.info(
+                f"Recording STARTED at song time "
+                f"{self._recording_start_song_time:.2f}s"
+            )
             self._recorded_audio.clear()
             self._recorded_frames.clear()
-            if self.audio_capture is not None:
-                self._recorded_sample_rate = self.audio_capture.cfg.sample_rate
         else:
-            logger.info("Recording STOPPED")
+            # Capture WHERE in song we stopped recording
+            self._recording_end_song_time = self.timeline.now()
+            duration = (
+                self._recording_end_song_time
+                - self._recording_start_song_time
+            )
+            logger.info(
+                f"Recording STOPPED at song time "
+                f"{self._recording_end_song_time:.2f}s "
+                f"(duration: {duration:.2f}s)"
+            )
 
     def is_recording(self) -> bool:
         return self._is_recording
