@@ -47,6 +47,7 @@ pronouncing = "^0.3.0"
 python-levenshtein = "^0.27.4"
 pydub = "^0.25.1"
 yt-dlp = "^2026.7.4"
+mediapipe = "0.10.21"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.1.0"
