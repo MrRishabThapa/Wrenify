@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
-
 from loguru import logger
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -121,8 +119,12 @@ class RecordingsView(QWidget):
             return
 
         try:
-            subprocess.Popen(["xdg-open", str(target)])
-            logger.info(f"Playing: {target.name}")
+            from PyQt6.QtCore import QUrl
+            from PyQt6.QtGui import QDesktopServices
+
+            # Cross-platform: calls xdg-open on Linux, os.startfile on Windows
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(target.absolute())))
+            logger.info(f"Opened: {target.name}")
         except Exception as e:
             QMessageBox.warning(
                 self, "Playback Failed",
