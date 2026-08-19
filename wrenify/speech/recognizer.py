@@ -140,6 +140,7 @@ class SpeechRecognizer:
         self,
         audio_input: Union[str, Path, np.ndarray],
         language: Optional[str] = None,
+        initial_prompt: Optional[str] = None,
     ) -> TranscriptionResult:
         """
         Transcribe audio with word-level timestamps.
@@ -147,6 +148,7 @@ class SpeechRecognizer:
         Args:
             audio_input: Path to audio file OR numpy array of samples
             language: Language code (e.g., 'en'). None = auto-detect
+            initial_prompt: Context hint (e.g. song title + lyrics)
 
         Returns:
             TranscriptionResult with word timings
@@ -166,7 +168,13 @@ class SpeechRecognizer:
             beam_size=self.cfg.beam_size,
             word_timestamps=True,
             vad_filter=True,
-            vad_parameters={"min_silence_duration_ms": 500},
+            vad_parameters={
+                "min_silence_duration_ms": 300,  # Was 500 — trigger faster
+                "speech_pad_ms": 200,            # Pad detected speech
+            },
+            initial_prompt=initial_prompt,  # Context hint
+            temperature=0.0,                # More deterministic
+            no_speech_threshold=0.4,        # Was 0.6 — accept quieter speech
         )
 
         words: list[Word] = []
@@ -206,6 +214,7 @@ class SpeechRecognizer:
         self,
         audio: np.ndarray,
         sample_rate: int = 16000,
+        initial_prompt: Optional[str] = None,
     ) -> TranscriptionResult:
         """
         Transcribe raw audio numpy array.
@@ -223,7 +232,7 @@ class SpeechRecognizer:
             audio = audio.mean(axis=1)
         audio = audio.astype(np.float32)
 
-        return self.transcribe(audio)
+        return self.transcribe(audio, initial_prompt=initial_prompt)
 
 
 # ────────────────────── Standalone test ──────────────────────
