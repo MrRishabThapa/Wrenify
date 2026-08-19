@@ -77,6 +77,7 @@ class PreKaraokeView(QWidget):
     def __init__(self, song: Song, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.song = song
+        self._song_title = song.display_name
 
         # 1. Safe defaults FIRST — before any code that may reference them
         self.webcam: Optional[WebcamCapture] = None
@@ -128,45 +129,23 @@ class PreKaraokeView(QWidget):
     def _build_ui(self) -> None:
         self.setStyleSheet("background: #0A0A15; color: white;")
 
-        # Song title
-        self._title_label = QLabel(self.song.display_name, self)
-        self._title_label.setFont(QFont("Inter", 34, QFont.Weight.Bold))
-        self._title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._title_label.setStyleSheet(
-            "color: #B4FF39; background: rgba(0,0,0,120);"
-            "border-radius: 10px;"
-        )
-
-        # Headphone reminder
-        self._headphones_label = QLabel(
-            "IMPORTANT: Wear headphones so the mic does not pick up "
-            "the song audio.",
-            self,
-        )
-        self._headphones_label.setFont(QFont("Inter", 14))
-        self._headphones_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._headphones_label.setStyleSheet(
-            "color: #FFD93D; background: rgba(0,0,0,120);"
-            "border-radius: 8px;"
-        )
-
         # Mic level visualizer (always visible, even if webcam fails)
         self._viz = VoiceVisualizer(self)
-        self._viz.setFixedSize(260, 70)
+        self._viz.setFixedSize(240, 50)
         self._viz_label = QLabel("Mic level", self)
-        self._viz_label.setFont(QFont("Inter", 11))
+        self._viz_label.setFont(QFont("Inter", 10))
         self._viz_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._viz_label.setStyleSheet("color: #8f8aa9;")
+        self._viz_label.setStyleSheet("color: rgba(143,138,169,180);")
 
-        # Buttons
+        # Buttons — smaller, refined
         self._start_btn = QPushButton("I'm Ready", self)
-        self._start_btn.setFixedSize(180, 50)
-        self._start_btn.setStyleSheet(self._button_style("#8B5CF6"))
+        self._start_btn.setFixedSize(160, 44)
+        self._start_btn.setStyleSheet(self._button_style("rgba(139,92,246,190)"))
         self._start_btn.clicked.connect(self._begin_countdown)
 
         self._cancel_btn = QPushButton("Back", self)
-        self._cancel_btn.setFixedSize(120, 50)
-        self._cancel_btn.setStyleSheet(self._button_style("#333"))
+        self._cancel_btn.setFixedSize(120, 44)
+        self._cancel_btn.setStyleSheet(self._button_style("rgba(60,60,70,190)"))
         self._cancel_btn.clicked.connect(self._cancel)
 
     @staticmethod
@@ -174,24 +153,23 @@ class PreKaraokeView(QWidget):
         return (
             f"QPushButton {{"
             f"  background: {bg}; color: white; border-radius: 8px;"
-            f"  font-size: 16px; font-weight: bold; border: none;"
+            f"  font-size: 14px; font-weight: medium; border: none;"
             f"}}"
+            f"QPushButton:hover {{ background: {bg.replace('190', '230')}; }}"
         )
 
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         """Position overlay child widgets."""
         w, h = self.width(), self.height()
 
-        self._title_label.setGeometry(w // 2 - 220, 16, 440, 44)
-        self._headphones_label.setGeometry(w // 2 - 400, 70, 800, 30)
+        # Voice visualizer bottom-left, subtle
+        self._viz.setGeometry(20, h - 70, 240, 50)
+        self._viz_label.setGeometry(20, h - 22, 240, 18)
 
-        self._viz.setGeometry(w - 280, 20, 260, 70)
-        self._viz_label.setGeometry(w - 280, 94, 260, 22)
-
-        # Buttons bottom-center, just above the instruction bar
+        # Buttons bottom-center, just above the instruction pill
         btn_y = h - 175
-        self._start_btn.move(w // 2 - 170, btn_y)
-        self._cancel_btn.move(w // 2 + 30, btn_y)
+        self._start_btn.move(w // 2 - 145, btn_y)
+        self._cancel_btn.move(w // 2 + 25, btn_y)
         super().resizeEvent(event)
 
     # ───────────────── Painting ─────────────────
@@ -204,28 +182,60 @@ class PreKaraokeView(QWidget):
         # 1. Background
         painter.fillRect(self.rect(), QColor(10, 10, 21))
 
-        # 2. Webcam feed
+        # 2. Song title — small, elegant, top center
+        self._draw_title(painter)
+
+        # 3. Webcam feed
         webcam_rect = self._draw_webcam(painter)
 
-        # 3. Gesture bounding box on top of webcam
+        # 4. Gesture bounding box on top of webcam
         self._draw_gesture_box(painter, webcam_rect)
 
-        # 4. Instruction text / countdown
+        # 5. Headphone reminder — subtle line below webcam
+        self._draw_headphone_warning(painter, webcam_rect)
+
+        # 6. Instruction text / countdown
         self._draw_current_instruction(painter)
 
-        # 5. Gesture debug indicator (top left)
+        # 7. Gesture debug indicator (top left)
         self._draw_gesture_indicator(painter)
 
         painter.end()
+
+    def _draw_title(self, painter: QPainter) -> None:
+        """Song title — small, elegant, top center."""
+        font = QFont("Inter", 20, QFont.Weight.Medium)
+        painter.setFont(font)
+        painter.setPen(QColor(180, 255, 57, 200))  # Lime at 80%
+        painter.drawText(
+            self.rect().adjusted(0, 25, 0, 0),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+            self._song_title,
+        )
+
+    def _draw_headphone_warning(self, painter: QPainter, webcam_rect: QRect) -> None:
+        """Subtle headphone reminder below the webcam feed."""
+        font = QFont("Inter", 11)
+        painter.setFont(font)
+        painter.setPen(QColor(255, 190, 110, 150))  # Warm orange at 60%
+        text = "Headphones recommended so the mic does not pick up the song"
+        pill_y = min(webcam_rect.bottom() + 14, self.height() - 170)
+        painter.drawText(
+            QRect(0, pill_y, self.width(), 24),
+            Qt.AlignmentFlag.AlignHCenter,
+            text,
+        )
 
     def _draw_webcam(self, painter: QPainter) -> QRect:
         """Draw webcam frame fitted to the widget. Returns its rect."""
         if self._current_pixmap is None:
             return self._draw_no_webcam_placeholder(painter)
 
+        # Cap at ~60% of screen height for breathing room
+        max_h = int(self.height() * 0.6)
         scaled = self._current_pixmap.scaled(
             self.width(),
-            self.height(),
+            max_h,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
@@ -371,12 +381,12 @@ class PreKaraokeView(QWidget):
         if not text:
             return
 
-        # Big centered countdown number
+        # Big centered countdown number — big but light
         if self._state in (PreKaraokeState.COUNTDOWN,
                            PreKaraokeState.STARTING):
-            font = QFont("Inter", 240, QFont.Weight.Black)
+            font = QFont("Inter", 180, QFont.Weight.Light)
             painter.setFont(font)
-            painter.setPen(QColor(180, 255, 57))
+            painter.setPen(QColor(180, 255, 57, 230))
             painter.drawText(
                 self.rect(),
                 Qt.AlignmentFlag.AlignCenter,
@@ -384,26 +394,36 @@ class PreKaraokeView(QWidget):
             )
             return
 
-        # Instruction bar at bottom
-        bar_h = 100
-        y = self.height() - bar_h - 20
-        painter.fillRect(0, y, self.width(), bar_h, QColor(0, 0, 0, 180))
+        # Elegant pill-shaped instruction near the bottom
+        font = QFont("Inter", 24, QFont.Weight.Normal)
+        painter.setFont(font)
 
         if self._state == PreKaraokeState.NO_HAND:
-            text_color = QColor(200, 200, 220)
+            text_color = QColor(200, 200, 220, 160)   # Dim gray
         elif self._state == PreKaraokeState.HAND_SEEN:
-            text_color = QColor(255, 149, 0)   # Orange
+            text_color = QColor(255, 149, 0, 204)     # Orange 80%
         elif self._state == PreKaraokeState.PALM_OPEN:
-            text_color = QColor(76, 217, 100)  # Green
+            text_color = QColor(76, 217, 100, 204)    # Green 80%
         else:
-            text_color = QColor(180, 255, 57)  # Lime
+            text_color = QColor(180, 255, 57, 204)    # Lime 80%
 
-        font = QFont("Inter", 32, QFont.Weight.Bold)
-        painter.setFont(font)
+        metrics = painter.fontMetrics()
+        text_width = metrics.horizontalAdvance(text)
+        text_height = metrics.height()
+
+        pill_x = (self.width() - text_width) // 2 - 20
+        pill_y = self.height() - 120
+        pill_w = text_width + 40
+        pill_h = text_height + 16
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 100))
+        painter.drawRoundedRect(pill_x, pill_y, pill_w, pill_h, pill_h // 2, pill_h // 2)
+
         painter.setPen(text_color)
         painter.drawText(
-            QRect(0, y, self.width(), bar_h),
-            Qt.AlignmentFlag.AlignCenter,
+            pill_x + 20,
+            pill_y + text_height + 4,
             text,
         )
 
@@ -414,8 +434,8 @@ class PreKaraokeView(QWidget):
             f"gesture={self._current_gesture.value} | "
             f"conf={self._gesture_confidence:.2f}"
         )
-        painter.setFont(QFont("Inter", 12))
-        painter.setPen(QColor(255, 255, 255, 160))
+        painter.setFont(QFont("Inter", 9))
+        painter.setPen(QColor(255, 255, 255, 100))
         painter.drawText(16, 30, text)
 
     # ───────────────── Webcam ─────────────────
