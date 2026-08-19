@@ -24,6 +24,7 @@ from wrenify.ui.import_view import ImportView
 from wrenify.ui.karaoke_view import KaraokeView
 from wrenify.ui.library_view import LibraryView
 from wrenify.ui.pre_karaoke_view import PreKaraokeView
+from wrenify.ui.recordings_view import RecordingsView
 from wrenify.ui.results_view import ResultsView
 from wrenify.ui.theme import THEME, global_stylesheet
 from wrenify.ui.widgets import (
@@ -93,13 +94,15 @@ class MainWindow(QMainWindow):
 
         self._add_section(layout, "WORKSPACE")
         self._add_nav(layout, "Studio", 0)
-        self._add_nav(layout, "Library", 5)
-        self._add_nav(layout, "Import", 6)
+        self._add_section(layout, "LIBRARY")
+        self._add_nav(layout, "Songs", 5)
+        self._add_nav(layout, "Recordings", 7)
         self._add_section(layout, "VOICE")
         self._add_nav(layout, "Auto-Tune", 1)
         self._add_nav(layout, "Speech", 2)
         self._add_section(layout, "PRODUCTION")
         self._add_nav(layout, "Lyrics", 3)
+        self._add_nav(layout, "Import", 6)
         self._add_nav(layout, "Video", 4)
 
         layout.addStretch()
@@ -128,6 +131,9 @@ class MainWindow(QMainWindow):
             return
         if index == 6:
             self._show_import()
+            return
+        if index == 7:
+            self._show_recordings()
             return
         self.stack.setCurrentIndex(index)
         button = self._nav_group.button(index)
@@ -198,6 +204,11 @@ class MainWindow(QMainWindow):
         self.import_view.import_completed.connect(self._show_library)
         self.stack.addWidget(self.import_view)
 
+        # Recordings view — grid of saved sessions
+        self.recordings_view = RecordingsView()
+        self.recordings_view.back_requested.connect(self._show_home)
+        self.stack.addWidget(self.recordings_view)
+
     def _show_home(self) -> None:
         """Show the Studio landing page."""
         self.stack.setCurrentWidget(self.home_view)
@@ -213,6 +224,12 @@ class MainWindow(QMainWindow):
         """Show the import screen."""
         self.stack.setCurrentWidget(self.import_view)
         self._check_nav(6)
+
+    def _show_recordings(self) -> None:
+        """Show the saved recordings library (rescanning first)."""
+        self.recordings_view.reload()
+        self.stack.setCurrentWidget(self.recordings_view)
+        self._check_nav(7)
 
     def _check_nav(self, index: int) -> None:
         """Synchronize sidebar state after programmatic navigation."""
