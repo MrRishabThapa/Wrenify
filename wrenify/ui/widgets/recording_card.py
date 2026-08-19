@@ -19,14 +19,14 @@ from wrenify.ui.widgets.glass import GlassCard
 class RecordingCard(GlassCard):
     """Card displaying a saved recording with play/export/delete actions."""
 
-    play_requested   = pyqtSignal(Recording)
+    play_requested   = pyqtSignal(Recording, bool)  # recording, autotuned
     export_requested = pyqtSignal(Recording)
     delete_requested = pyqtSignal(Recording)
 
     def __init__(self, recording: Recording, parent: QWidget | None = None) -> None:
         super().__init__(parent, radius=16)
         self.recording = recording
-        self.setFixedSize(260, 220)
+        self.setFixedSize(260, 240)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -88,43 +88,93 @@ class RecordingCard(GlassCard):
 
         layout.addStretch()
 
-        buttons = QHBoxLayout()
-        buttons.setSpacing(6)
+        # Playback buttons (row 1)
+        playback = QHBoxLayout()
+        playback.setSpacing(6)
 
-        play_btn = self._mini_btn("▶ Play")
-        play_btn.clicked.connect(lambda: self.play_requested.emit(recording))
-        buttons.addWidget(play_btn)
+        raw_btn = self._mini_btn("▶ Raw")
+        raw_btn.clicked.connect(
+            lambda: self.play_requested.emit(recording, False)
+        )
+        playback.addWidget(raw_btn)
+
+        if recording.has_autotuned:
+            autotune_btn = self._mini_btn("✨ Auto-Tuned", accent=True)
+            autotune_btn.clicked.connect(
+                lambda: self.play_requested.emit(recording, True)
+            )
+            playback.addWidget(autotune_btn)
+        else:
+            autotune_disabled = self._mini_btn("✨ No Auto-Tune")
+            autotune_disabled.setEnabled(False)
+            playback.addWidget(autotune_disabled)
+
+        layout.addLayout(playback)
+
+        # Actions (row 2)
+        actions = QHBoxLayout()
+        actions.setSpacing(6)
 
         export_btn = self._mini_btn("⤓ Export")
-        export_btn.clicked.connect(lambda: self.export_requested.emit(recording))
-        buttons.addWidget(export_btn)
+        export_btn.clicked.connect(
+            lambda: self.export_requested.emit(recording)
+        )
+        actions.addWidget(export_btn)
 
         del_btn = self._mini_btn("🗑", small=True)
-        del_btn.clicked.connect(lambda: self.delete_requested.emit(recording))
-        buttons.addWidget(del_btn)
+        del_btn.clicked.connect(
+            lambda: self.delete_requested.emit(recording)
+        )
+        actions.addWidget(del_btn)
 
-        layout.addLayout(buttons)
+        layout.addLayout(actions)
 
-    def _mini_btn(self, text: str, small: bool = False) -> QPushButton:
+    def _mini_btn(
+        self, text: str, small: bool = False, accent: bool = False
+    ) -> QPushButton:
         btn = QPushButton(text)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setFixedHeight(32)
         if small:
             btn.setFixedWidth(32)
-        btn.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.05);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 8px;
-                color: white;
-                font-size: 12px;
-                padding: 4px 10px;
-            }
-            QPushButton:hover {
-                background: rgba(180, 255, 57, 0.15);
-                border-color: rgba(180, 255, 57, 0.4);
-            }
-        """)
+
+        if accent:
+            style = """
+                QPushButton {
+                    background: rgba(180, 255, 57, 0.15);
+                    border: 1px solid rgba(180, 255, 57, 0.4);
+                    border-radius: 8px;
+                    color: #B4FF39;
+                    font-size: 11px;
+                    font-weight: 600;
+                    padding: 4px 8px;
+                }
+                QPushButton:hover {
+                    background: rgba(180, 255, 57, 0.25);
+                    border-color: rgba(180, 255, 57, 0.6);
+                }
+            """
+        else:
+            style = """
+                QPushButton {
+                    background: rgba(255, 255, 255, 0.05);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 8px;
+                    color: white;
+                    font-size: 11px;
+                    padding: 4px 8px;
+                }
+                QPushButton:hover {
+                    background: rgba(180, 255, 57, 0.15);
+                    border-color: rgba(180, 255, 57, 0.4);
+                }
+                QPushButton:disabled {
+                    color: rgba(255, 255, 255, 0.3);
+                    background: rgba(255, 255, 255, 0.02);
+                }
+            """
+
+        btn.setStyleSheet(style)
         return btn
 
     @staticmethod
