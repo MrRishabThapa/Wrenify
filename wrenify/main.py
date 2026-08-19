@@ -46,6 +46,27 @@ def print_banner() -> None:
     console.print(Panel(text, border_style="magenta", padding=(1, 4)))
 
 
+def print_audio_devices() -> None:
+    """Show detected audio input devices at startup."""
+    import sounddevice as sd
+
+    console.print("\n[dim]Audio devices:[/dim]")
+    try:
+        devices = sd.query_devices()
+        default_input = sd.default.device[0]
+
+        for i, device in enumerate(devices):
+            if device['max_input_channels'] > 0:
+                is_default = " [green]<-- DEFAULT[/green]" if i == default_input else ""
+                console.print(
+                    f"  [{i}] {device['name']} "
+                    f"({device['max_input_channels']}ch @ "
+                    f"{int(device['default_samplerate'])}Hz){is_default}"
+                )
+    except Exception as e:
+        console.print(f"[red]Could not list devices: {e}[/red]")
+
+
 def check_system_resources() -> None:
     """Warn if system resources are low before starting Wrenify."""
     import psutil
@@ -278,6 +299,7 @@ def test_full_karaoke() -> None:
 
 def main() -> None:
     print_banner()
+    print_audio_devices()
     check_system_resources()
 
     console.print("\n[bold]Menu:[/bold]")
