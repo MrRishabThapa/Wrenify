@@ -25,7 +25,7 @@ from typing import Optional
 import cv2
 import numpy as np
 from loguru import logger
-from PyQt6.QtCore import QRect, QThread, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QRect, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import (
     QColor,
     QFont,
