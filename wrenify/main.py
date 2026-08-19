@@ -276,6 +276,64 @@ def launch_ui() -> None:
     sys.exit(run())
 
 
+def full_import_song() -> None:
+    """Full pipeline: Demucs + Whisper for perfect karaoke."""
+    import subprocess
+
+    from rich.prompt import Prompt
+
+    console.print("\n[bold]Full Song Import (Demucs + Whisper)[/bold]")
+    console.print("[dim]Takes 5-15 min | Produces perfectly aligned files[/dim]\n")
+
+    audio_path = Prompt.ask("[cyan]Path to song (with vocals)[/cyan]")
+    subprocess.run([
+        "poetry", "run", "python", "-m", "wrenify.songs.full_import",
+        audio_path,
+    ])
+
+
+def list_song_library() -> None:
+    """Show all imported songs."""
+    import json
+
+    from wrenify.songs.full_import import SONGS_DIR
+
+    if not SONGS_DIR.exists():
+        console.print("[yellow]No songs folder yet[/yellow]")
+        return
+
+    folders = sorted([f for f in SONGS_DIR.iterdir() if f.is_dir()])
+    if not folders:
+        console.print("[yellow]No songs imported yet[/yellow]")
+        return
+
+    console.print(f"\n[bold]Your Library ({len(folders)} songs)[/bold]\n")
+    for f in folders:
+        meta_file = f / "meta.json"
+        if meta_file.exists():
+            meta = json.loads(meta_file.read_text())
+            title = meta.get("title", f.name)
+            artist = meta.get("artist", "Unknown")
+            duration = meta.get("duration", 0)
+            m, s = divmod(int(duration), 60)
+            console.print(f"  [cyan]{artist}[/cyan] — {title} ({m}:{s:02d})")
+        else:
+            console.print(f"  [dim]{f.name} (no metadata)[/dim]")
+
+
+def test_speech_lrc_generate() -> None:
+    """Generate a .lrc lyrics file from audio using Whisper."""
+    import subprocess
+
+    from rich.prompt import Prompt
+
+    path = Prompt.ask("[cyan]Path to audio file (vocals preferred)[/cyan]")
+    subprocess.run([
+        "poetry", "run", "python", "-m", "wrenify.songs.lrc_generator",
+        path,
+    ])
+
+
 def test_full_karaoke() -> None:
     """Launch a full karaoke session (music + lyrics + scoring)."""
     from PyQt6.QtWidgets import QApplication
@@ -287,6 +345,12 @@ def test_full_karaoke() -> None:
     console.print("  1. Instrumental audio file (mp3/wav)")
     console.print("  2. Lyrics file (.lrc)")
     console.print("\n[bold]HEADPHONES RECOMMENDED[/bold] to avoid mic feedback.\n")
+
+    console.print("[dim]Keyboard shortcuts during karaoke:[/dim]")
+    console.print("[dim]  R       = Start/stop recording[/dim]")
+    console.print("[dim]  Space   = Pause/resume[/dim]")
+    console.print("[dim]  ← →    = Adjust lyrics sync ±0.5s[/dim]")
+    console.print()
 
     app = QApplication(sys.argv)
     app.setApplicationName("Wrenify")
@@ -303,24 +367,28 @@ def main() -> None:
     check_system_resources()
 
     console.print("\n[bold]Menu:[/bold]")
-    console.print("  [cyan]1[/cyan] → Test microphone (5s level meter)")
-    console.print("  [cyan]2[/cyan] → Auto-tune a WAV file")
-    console.print("  [cyan]3[/cyan] → Apply effects to a WAV file")
-    console.print("  [cyan]4[/cyan] → Test webcam (live preview)")
-    console.print("  [cyan]5[/cyan] → Test video export (webcam + mic → MP4)")
-    console.print("  [cyan]6[/cyan] → Speech-to-text on WAV file (batch)")
-    console.print("  [cyan]7[/cyan] → Live speech recognition (streaming)")
-    console.print("  [cyan]8[/cyan] → Parse an LRC lyrics file")
-    console.print("  [cyan]9[/cyan] → Fetch lyrics from online")
+    console.print("  [cyan]1[/cyan]  → Test microphone (5s level meter)")
+    console.print("  [cyan]2[/cyan]  → Auto-tune a WAV file")
+    console.print("  [cyan]3[/cyan]  → Apply effects to a WAV file")
+    console.print("  [cyan]4[/cyan]  → Test webcam (live preview)")
+    console.print("  [cyan]5[/cyan]  → Test video export (webcam + mic → MP4)")
+    console.print("  [cyan]6[/cyan]  → Speech-to-text on WAV file (batch)")
+    console.print("  [cyan]7[/cyan]  → Live speech recognition (streaming)")
+    console.print("  [cyan]8[/cyan]  → Parse an LRC lyrics file")
+    console.print("  [cyan]9[/cyan]  → Fetch lyrics from online")
     console.print("  [cyan]10[/cyan] → Test phonetic word stretcher")
     console.print("  [cyan]11[/cyan] → Full karaoke session (UI + scoring)")
     console.print("  [cyan]12[/cyan] → Fetch instrumental from YouTube")
-    console.print("  [cyan]q[/cyan] → Quit\n")
+    console.print("  [cyan]13[/cyan] → Generate LRC from audio (Whisper)")
+    console.print("  [cyan]14[/cyan] → Full import (Demucs + Whisper)")
+    console.print("  [cyan]15[/cyan] → Show song library")
+    console.print("  [cyan]q[/cyan]  → Quit\n")
 
     choice = Prompt.ask(
         "→",
         choices=[
-            "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "q",
+            "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12",
+            "13", "14", "15", "q",
         ],
         default="1",
     )
@@ -349,6 +417,12 @@ def main() -> None:
         test_full_karaoke()
     elif choice == "12":
         test_fetch_instrumental()
+    elif choice == "13":
+        test_speech_lrc_generate()
+    elif choice == "14":
+        full_import_song()
+    elif choice == "15":
+        list_song_library()
     else:
         console.print("[dim]Bye[/dim]")
         sys.exit(0)
