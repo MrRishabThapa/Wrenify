@@ -26,11 +26,11 @@ class RecordingCard(GlassCard):
     def __init__(self, recording: Recording, parent: QWidget | None = None) -> None:
         super().__init__(parent, radius=16)
         self.recording = recording
-        self.setFixedSize(280, 280)
+        self.setFixedSize(280, 240)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(6)
+        layout.setSpacing(8)
 
         # Title
         title = QLabel(recording.song_title)
@@ -50,56 +50,22 @@ class RecordingCard(GlassCard):
         """)
         layout.addWidget(artist)
 
-        # Grade + score
-        grade_row = QHBoxLayout()
-
-        grade = QLabel(recording.grade)
-        grade.setStyleSheet(f"""
-            color: {self._grade_color(recording.grade)};
-            font-size: 22px;
-            font-weight: 700;
-        """)
-        grade_row.addWidget(grade)
-
-        score = QLabel(f"{recording.score_pct:.0f}%")
-        score.setStyleSheet(f"""
-            color: {THEME.colors.text_secondary};
-            font-size: 13px;
-            font-weight: 500;
-        """)
-        grade_row.addWidget(score)
-        grade_row.addStretch()
-        layout.addLayout(grade_row)
-
-        # Stats
-        stats = QLabel(
-            f"✓ {recording.correct_count}  "
-            f"✗ {recording.wrong_count}  "
-            f"— {recording.missed_count}"
-        )
-        stats.setStyleSheet(f"""
-            color: {THEME.colors.text_tertiary};
-            font-size: 10px;
-        """)
-        layout.addWidget(stats)
-
-        # Date + duration
+        # Date + duration (that's all metadata now)
         meta = QLabel(f"{recording.date_display} · {recording.duration_display}")
         meta.setStyleSheet(f"""
             color: {THEME.colors.text_tertiary};
-            font-size: 10px;
+            font-size: 11px;
         """)
         layout.addWidget(meta)
 
         layout.addStretch()
 
-        # Playback buttons — row 1: MIXED (with music)
+        # WITH MUSIC section
         music_label = QLabel("WITH MUSIC")
         music_label.setStyleSheet(f"""
             color: {THEME.colors.text_tertiary};
             font-size: 9px;
             letter-spacing: 1.5px;
-            margin-top: 4px;
         """)
         layout.addWidget(music_label)
 
@@ -107,18 +73,18 @@ class RecordingCard(GlassCard):
         mixed_row.setSpacing(6)
 
         if recording.has_mixed_raw:
-            raw_music_btn = self._mini_btn("▶ Raw")
-            raw_music_btn.clicked.connect(
+            btn = self._mini_btn("▶ Raw")
+            btn.clicked.connect(
                 lambda: self.play_requested.emit(recording, "mixed_raw")
             )
-            mixed_row.addWidget(raw_music_btn)
+            mixed_row.addWidget(btn)
 
         if recording.has_mixed_autotuned:
-            autotune_music_btn = self._mini_btn("✨ Auto-Tune", accent=True)
-            autotune_music_btn.clicked.connect(
+            btn = self._mini_btn("✨ Auto-Tune", accent=True)
+            btn.clicked.connect(
                 lambda: self.play_requested.emit(recording, "mixed_autotuned")
             )
-            mixed_row.addWidget(autotune_music_btn)
+            mixed_row.addWidget(btn)
 
         if not recording.has_mixed_raw and not recording.has_mixed_autotuned:
             no_mix = self._mini_btn("Not available")
@@ -127,7 +93,7 @@ class RecordingCard(GlassCard):
 
         layout.addLayout(mixed_row)
 
-        # Playback buttons — row 2: VOICE ONLY
+        # VOICE ONLY section
         voice_label = QLabel("VOICE ONLY")
         voice_label.setStyleSheet(f"""
             color: {THEME.colors.text_tertiary};
@@ -141,38 +107,38 @@ class RecordingCard(GlassCard):
         voice_row.setSpacing(6)
 
         if recording.has_voice_raw:
-            raw_voice_btn = self._mini_btn("▶ Raw")
-            raw_voice_btn.clicked.connect(
+            btn = self._mini_btn("▶ Raw")
+            btn.clicked.connect(
                 lambda: self.play_requested.emit(recording, "voice_raw")
             )
-            voice_row.addWidget(raw_voice_btn)
+            voice_row.addWidget(btn)
 
         if recording.has_voice_autotuned:
-            autotune_voice_btn = self._mini_btn("✨ Auto-Tune", accent=True)
-            autotune_voice_btn.clicked.connect(
+            btn = self._mini_btn("✨ Auto-Tune", accent=True)
+            btn.clicked.connect(
                 lambda: self.play_requested.emit(recording, "voice_autotuned")
             )
-            voice_row.addWidget(autotune_voice_btn)
+            voice_row.addWidget(btn)
 
         layout.addLayout(voice_row)
 
-        # Actions — row 3
-        actions_row = QHBoxLayout()
-        actions_row.setSpacing(6)
+        # Actions
+        actions = QHBoxLayout()
+        actions.setSpacing(6)
 
         export_btn = self._mini_btn("⤓ Export")
         export_btn.clicked.connect(
             lambda: self.export_requested.emit(recording)
         )
-        actions_row.addWidget(export_btn)
+        actions.addWidget(export_btn)
 
         del_btn = self._mini_btn("🗑", small=True)
         del_btn.clicked.connect(
             lambda: self.delete_requested.emit(recording)
         )
-        actions_row.addWidget(del_btn)
+        actions.addWidget(del_btn)
 
-        layout.addLayout(actions_row)
+        layout.addLayout(actions)
 
     def _mini_btn(
         self, text: str, small: bool = False, accent: bool = False
@@ -221,14 +187,3 @@ class RecordingCard(GlassCard):
 
         btn.setStyleSheet(style)
         return btn
-
-    @staticmethod
-    def _grade_color(grade: str) -> str:
-        colors = {
-            "A": "#B4FF39",
-            "B": "#4CD964",
-            "C": "#FFB84D",
-            "D": "#FF9500",
-            "F": "#FF453A",
-        }
-        return colors.get(grade[0] if grade else "F", "#FF453A")
