@@ -6,11 +6,22 @@ from collections.abc import Callable
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
-from PyQt6.QtWidgets import QGraphicsOpacityEffect, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QVBoxLayout,
+    QWidget,
+)
 
 from wrenify.core.config import ASSETS_DIR, CONFIG
 from wrenify.ui.theme import THEME
-from wrenify.ui.widgets.glass import CaptionLabel, GlassCard, GlowLabel, PillButton, SidebarItem
+from wrenify.ui.widgets.glass import (
+    CaptionLabel,
+    GlassCard,
+    GlowLabel,
+    PillButton,
+    SidebarItem,
+)
 
 LOGO_PATH = ASSETS_DIR / "wrenify.png"
 
@@ -32,9 +43,15 @@ class NavButton(SidebarItem):
 
 
 class WelcomePage(QWidget):
-    """The Studio landing page, with the existing file-picker action exposed."""
+    """The Studio landing page with in-app entry points."""
 
-    def __init__(self, start_callback: Callable[[], None] | None = None, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        start_callback: Callable[[], None] | None = None,
+        library_callback: Callable[[], None] | None = None,
+        import_callback: Callable[[], None] | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(48, 42, 48, 42)
@@ -63,6 +80,10 @@ class WelcomePage(QWidget):
         imported = PillButton("Import Song", "primary")
         library.setMinimumWidth(140)
         imported.setMinimumWidth(140)
+        if library_callback is not None:
+            library.clicked.connect(library_callback)
+        if import_callback is not None:
+            imported.clicked.connect(import_callback)
         for button in (start, library, imported):
             actions.addWidget(button)
         layout.addLayout(actions)
