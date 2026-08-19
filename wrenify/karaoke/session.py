@@ -14,7 +14,6 @@ Emits Qt signals for UI updates.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -167,7 +166,7 @@ class KaraokeSession(QObject):
         logger.info("Karaoke session running with music")
 
     def stop(self) -> None:
-        """Stop the session and emit final score."""
+        """Stop the session, save any recording, and emit final score."""
         if not self._running:
             return
         logger.info("Stopping karaoke session")
@@ -177,6 +176,13 @@ class KaraokeSession(QObject):
         if self._audio_forwarder is not None:
             self._audio_forwarder.stop()
             self._audio_forwarder = None
+
+        # Capture sample rate BEFORE closing capture
+        sample_rate = (
+            self.audio_capture.cfg.sample_rate
+            if self.audio_capture is not None
+            else 44100
+        )
 
         # Stop the song
         self.player.stop()
@@ -193,7 +199,46 @@ class KaraokeSession(QObject):
 
         report = self.scorer.compute(self.timeline)
         logger.info(f"Session finished: {report.summary}")
+
+        # Save recording to library if we recorded anything
+        if self._recorded_audio:
+            self._save_recording(report, sample_rate)
+
         self.finished_signal.emit(report)
+
+    def end_early(self) -> None:
+        """User-triggered early stop. Same as stop() but logged distinctly."""
+        logger.info("User ended karaoke early")
+        self.stop()
+
+    def _save_recording(self, report: ScoreReport, sample_rate: int) -> None:
+        """Persist the captured performance to the recordings library."""
+        try:
+            from wrenify.recordings.manager import RecordingsManager
+
+            manager = RecordingsManager()
+            audio_samples = np.concatenate(self._recorded_audio)
+
+            score_data = {
+                "grade":         report.grade,
+                "total_score":   report.total_score,
+                "correct_count": report.correct_count,
+                "wrong_count":   report.wrong_count,
+                "missed_count":  report.missed_count,
+                "total_words":   report.total_words,
+            }
+
+            saved_recording = manager.save(
+                song_title=self.song.title,
+                song_artist=self.song.artist,
+                audio_samples=audio_samples,
+                sample_rate=sample_rate,
+                video_frames=self._recorded_frames or None,
+                score_data=score_data,
+            )
+            logger.success(f"Recording saved: {saved_recording.folder.name}")
+        except Exception as e:
+            logger.error(f"Failed to save recording: {e}")
 
     def pause(self) -> None:
         """Pause the song; the timeline follows the player."""
@@ -235,46 +280,6 @@ class KaraokeSession(QObject):
 
     def is_recording(self) -> bool:
         return self._is_recording
-
-    def has_recording(self) -> bool:
-        """True if any audio was captured during this session."""
-        return bool(self._recorded_audio)
-
-    def export_recording(self, output_path: Optional[Path] = None) -> Optional[Path]:
-        """Export recorded audio + webcam frames as MP4 (WAV if no frames)."""
-        if not self._recorded_audio:
-            logger.warning("Nothing recorded")
-            return None
-
-        audio = np.concatenate(self._recorded_audio)
-
-        if not self._recorded_frames:
-            # Audio only — save as WAV
-            import soundfile as sf
-
-            wav_path = (
-                output_path
-                if output_path is not None and output_path.suffix == ".wav"
-                else (output_path or Path.cwd() / "wrenify_recording").with_suffix(".wav")
-            )
-            wav_path.parent.mkdir(parents=True, exist_ok=True)
-            sf.write(str(wav_path), audio, self._recorded_sample_rate)
-            logger.success(f"Audio saved: {wav_path}")
-            return wav_path
-
-        from wrenify.video.exporter import VideoExporter
-
-        exporter = VideoExporter(
-            output_dir=output_path.parent if output_path else None
-        )
-
-        song_name = self.song.title.lower().replace(" ", "_")
-        return exporter.export(
-            frames=self._recorded_frames,
-            audio=audio,
-            sample_rate=self._recorded_sample_rate,
-            output_name=output_path.stem if output_path else f"wrenify_{song_name}",
-        )
 
     def _forward_audio(self) -> None:
         """Pull audio chunks from capture and forward to streamer."""
