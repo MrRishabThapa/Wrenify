@@ -73,6 +73,10 @@ class KaraokeView(QWidget):
         self._offset_toast: Optional[str] = None
         self._offset_toast_until: float = 0.0
 
+        # Recording indicator state
+        self._recording_indicator_visible = False
+        self.session.recording_toggled.connect(self._on_recording_toggled)
+
         # Repaint every tick
         self.session.tick_signal.connect(self._on_tick)
 
@@ -86,10 +90,15 @@ class KaraokeView(QWidget):
             self.session.audio_level_signal.connect(self._on_mic_level)
 
         # Preload font
-        self._lyric_font = QFont("Inter", 32, QFont.Weight.Bold)
+        self._lyric_font = QFont("Inter", 28, QFont.Weight.Medium)
         self._lyric_font.setStyleHint(QFont.StyleHint.SansSerif)
 
         self._small_font = QFont("Inter", 14)
+
+    def _on_recording_toggled(self, is_recording: bool) -> None:
+        """Show/hide the REC indicator overlay."""
+        self._recording_indicator_visible = is_recording
+        self.update()
 
     def _on_mic_level(self, rms: float) -> None:
         """Update the mini visualizer with mic RMS level."""
@@ -114,7 +123,9 @@ class KaraokeView(QWidget):
     def keyPressEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         key = event.key()
 
-        if key == Qt.Key.Key_Left:
+        if key == Qt.Key.Key_R:
+            self.session.toggle_recording()
+        elif key == Qt.Key.Key_Left:
             # Shift lyrics 0.5s EARLIER
             new_offset = self.session.timeline.offset_sec - 0.5
             self.session.timeline.set_offset(new_offset)
@@ -184,7 +195,29 @@ class KaraokeView(QWidget):
         # 6. Draw offset toast if active
         self._draw_offset_toast(painter)
 
+        # 7. Draw recording indicator if active
+        self._draw_recording_indicator(painter)
+
         painter.end()
+
+    def _draw_recording_indicator(self, painter: QPainter) -> None:
+        """Pulsing red dot + REC text when recording is active."""
+        if not self._recording_indicator_visible:
+            return
+
+        import math
+        pulse = (math.sin(time.monotonic() * 3) + 1) / 2
+        alpha = int(150 + 105 * pulse)
+
+        # Red dot
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(255, 59, 48, alpha))
+        painter.drawEllipse(30, 80, 16, 16)
+
+        # REC text
+        painter.setFont(QFont("Inter", 13, QFont.Weight.Bold))
+        painter.setPen(QColor(255, 59, 48, alpha))
+        painter.drawText(52, 94, "REC")
 
     def _draw_offset_toast(self, painter: QPainter) -> None:
         """Show a temporary toast with current lyrics offset."""
@@ -286,7 +319,7 @@ class KaraokeView(QWidget):
         for word, width in zip(words, word_widths):
             color = STATE_COLORS.get(word.state, QColor(255, 255, 255))
             if dim:
-                color = QColor(color.red(), color.green(), color.blue(), 120)
+                color = QColor(color.red(), color.green(), color.blue(), 80)
 
             # Use display_text here too
             self._draw_outlined_text(painter, word.display_text, x, y, color)
@@ -306,7 +339,7 @@ class KaraokeView(QWidget):
 
         # Outline
         outline_pen = QPen(OUTLINE_COLOR)
-        outline_pen.setWidth(4)
+        outline_pen.setWidth(3)
         outline_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(outline_pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -356,6 +389,14 @@ class KaraokeView(QWidget):
         text = f"Correct: {correct}   Wrong: {wrong}   Missed: {missed}"
         painter.setPen(QColor(255, 255, 255, 220))
         painter.drawText(40, self.height() - 20, text)
+
+        # Keyboard hint (bottom-right, subtle)
+        hint_text = "R = Record  |  Space = Pause  |  ← → = Sync Lyrics"
+        painter.setFont(QFont("Inter", 10))
+        painter.setPen(QColor(255, 255, 255, 100))
+        painter.drawText(
+            self.width() - 380, self.height() - 8, hint_text
+        )
 
     @staticmethod
     def _format_time(seconds: float) -> str:
