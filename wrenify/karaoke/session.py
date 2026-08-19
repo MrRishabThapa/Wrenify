@@ -55,7 +55,12 @@ class KaraokeSession(QObject):
         """Song duration in seconds (from the loaded audio)."""
         return self._effective_duration
 
-    def __init__(self, song: Song, parent: Optional[QObject] = None) -> None:
+    def __init__(
+        self,
+        song: Song,
+        lyrics_offset_sec: float = 0.0,
+        parent: Optional[QObject] = None,
+    ) -> None:
         super().__init__(parent)
         self.song = song
 
@@ -67,7 +72,11 @@ class KaraokeSession(QObject):
         self.player = AudioPlayer()
         self.player.load(song.instrumental_path)
 
-        self.timeline = Timeline(self.lyrics, player=self.player)
+        self.timeline = Timeline(
+            self.lyrics,
+            player=self.player,
+            offset_sec=lyrics_offset_sec,
+        )
         self.matcher  = WordMatcher(self.timeline)
         self.scorer   = Scorer()
 
@@ -116,9 +125,17 @@ class KaraokeSession(QObject):
         self.player.play(start_position_sec=0.0)
         self._song_started = True
 
+        # Create initial prompt with song context and upcoming lyrics
+        all_lyrics_text = " ".join(w.text for w in self.timeline.words[:100])
+        prompt = (
+            f"Karaoke of '{self.song.title}' by {self.song.artist}. "
+            f"Lyrics: {all_lyrics_text}"
+        )
+
         # Start streaming recognizer with matcher as callback
         self.streamer = StreamingRecognizer(
-            on_words_callback=self._on_words_recognized
+            on_words_callback=self._on_words_recognized,
+            initial_prompt=prompt,
         )
 
         # NEW: Give streamer access to current song time so Whisper's
