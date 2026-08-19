@@ -90,8 +90,9 @@ class Timeline:
             render(word)
     """
 
-    # How far ahead/behind a sung word can be to still count
-    MATCH_WINDOW_SEC: float = 1.5
+    # How far ahead/behind a sung word can be to still count.
+    # 3.0s accommodates Whisper's ~1-2s transcription latency.
+    MATCH_WINDOW_SEC: float = 3.0
 
     def __init__(
         self,
@@ -248,7 +249,10 @@ class Timeline:
         """Mark a word as correctly sung."""
         resolved_at = self.now()
         with self._lock:
-            if word.state in (WordState.PENDING, WordState.ACTIVE):
+            # Allow retroactive scoring — Whisper may be late
+            if word.state in (
+                WordState.PENDING, WordState.ACTIVE, WordState.MISSED
+            ):
                 word.state = WordState.CORRECT
                 word.match_score = match_score
                 word.resolved_at = resolved_at
@@ -257,7 +261,10 @@ class Timeline:
         """Mark a word as sung incorrectly."""
         resolved_at = self.now()
         with self._lock:
-            if word.state in (WordState.PENDING, WordState.ACTIVE):
+            # Allow retroactive scoring — Whisper may be late
+            if word.state in (
+                WordState.PENDING, WordState.ACTIVE, WordState.MISSED
+            ):
                 word.state = WordState.WRONG
                 word.match_score = match_score
                 word.resolved_at = resolved_at
