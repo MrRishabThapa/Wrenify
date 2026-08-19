@@ -8,6 +8,7 @@ Tuned for 8GB RAM systems. See docstrings for override guidance.
 """
 
 import os
+import platform
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -25,6 +26,15 @@ MODELS_DIR = ROOT_DIR / "models"
 # Ensure directories exist
 EXPORT_DIR.mkdir(exist_ok=True)
 MODELS_DIR.mkdir(exist_ok=True)
+
+# Cross-platform user config directory
+if platform.system() == "Windows":
+    USER_CONFIG_DIR = Path.home() / "AppData" / "Local" / "Wrenify"
+else:
+    # Linux and macOS
+    USER_CONFIG_DIR = Path.home() / ".config" / "wrenify"
+
+USER_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ────────────── Config Dataclasses ──────────────
