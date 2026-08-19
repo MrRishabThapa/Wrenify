@@ -18,7 +18,7 @@ from typing import Optional
 import cv2
 import numpy as np
 from loguru import logger
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QThread, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont, QImage, QPixmap
 from PyQt6.QtWidgets import (
     QHBoxLayout,
@@ -53,17 +53,24 @@ class PreKaraokeView(QWidget):
         super().__init__(parent)
         self.song = song
 
+        # 1. Safe defaults FIRST — before any code that may reference them
         self.webcam: Optional[WebcamCapture] = None
         self.audio_capture: Optional[AudioCapture] = None
+        self._gesture_timer: Optional[QTimer] = None
+        self._mic_timer: Optional[QTimer] = None
+        self._countdown_timer: Optional[QTimer] = None
         self._gesture_state: str = "idle"
         self._palm_seen_at: Optional[float] = None
         self._countdown_value: int = self.COUNTDOWN_START
         self._emitted = False
 
-        self._build_ui()
-        self._try_start_webcam()
-        self._try_start_mic()
+        assert QThread.currentThread() == self.thread(), (
+            "PreKaraokeView must be created on the main thread"
+        )
 
+        self._build_ui()
+
+        # 2. Timers BEFORE capture startup (startup code starts them)
         self._gesture_timer = QTimer(self)
         self._gesture_timer.setInterval(66)  # ~15fps
         self._gesture_timer.timeout.connect(self._on_gesture_frame)
@@ -75,6 +82,10 @@ class PreKaraokeView(QWidget):
         self._countdown_timer = QTimer(self)
         self._countdown_timer.setInterval(1000)
         self._countdown_timer.timeout.connect(self._on_countdown_tick)
+
+        # 3. LAST: start captures (all attributes now exist)
+        self._try_start_webcam()
+        self._try_start_mic()
 
     # ───────────────── UI ─────────────────
 
@@ -177,9 +188,19 @@ class PreKaraokeView(QWidget):
         try:
             self.webcam = WebcamCapture()
             self.webcam.start()
-            self._gesture_timer.start()
+            # getattr guard: never reference a timer that may not exist yet
+            gesture_timer = getattr(self, '_gesture_timer', None)
+            if gesture_timer is not None:
+                gesture_timer.start()
+            logger.info("Pre-karaoke: webcam + gesture detection ready")
         except Exception as e:
             logger.warning(f"Webcam unavailable on ready screen: {e}")
+            # Stop a partially-started capture so no thread leaks
+            if self.webcam is not None:
+                try:
+                    self.webcam.stop()
+                except Exception:
+                    pass
             self.webcam = None
             self._hint.setText("Webcam unavailable — press Start to begin")
             self._draw_no_webcam_placeholder()
@@ -204,15 +225,24 @@ class PreKaraokeView(QWidget):
         try:
             self.audio_capture = AudioCapture()
             self.audio_capture.start()
-            self._mic_timer.start()
+            mic_timer = getattr(self, '_mic_timer', None)
+            if mic_timer is not None:
+                mic_timer.start()
+            logger.info("Pre-karaoke: mic ready")
         except Exception as e:
             logger.warning(f"Mic unavailable on ready screen: {e}")
+            # Stop a partially-started capture so no stream leaks
+            if self.audio_capture is not None:
+                try:
+                    self.audio_capture.stop()
+                except Exception:
+                    pass
             self.audio_capture = None
             self._viz.set_status("silent")
 
     def _on_mic_level(self) -> None:
         """Poll mic chunks and push levels into the visualizer."""
-        if self.audio_capture is None:
+        if not self.isVisible() or self.audio_capture is None:
             return
         chunk = self.audio_capture.get_chunk(timeout=0.0)
         if chunk is None:
@@ -224,21 +254,39 @@ class PreKaraokeView(QWidget):
         else:
             self._viz.set_status("silent")
 
-    def _stop_webcam(self) -> None:
-        self._gesture_timer.stop()
-        self._mic_timer.stop()
-        if self.audio_capture is not None:
-            self.audio_capture.stop()
+    def _teardown_safely(self) -> None:
+        """Stop everything in the correct order to prevent segfault."""
+        # Stop timers FIRST (they may access other resources)
+        for timer_name in ('_gesture_timer', '_mic_timer', '_countdown_timer'):
+            timer = getattr(self, timer_name, None)
+            if timer is not None:
+                try:
+                    timer.stop()
+                except Exception as e:
+                    logger.debug(f"Failed to stop {timer_name}: {e}")
+
+        # Then stop capture threads
+        if getattr(self, 'audio_capture', None) is not None:
+            try:
+                self.audio_capture.stop()
+            except Exception as e:
+                logger.debug(f"Audio capture cleanup: {e}")
             self.audio_capture = None
-        if self.webcam is not None:
-            self.webcam.stop()
+
+        if getattr(self, 'webcam', None) is not None:
+            try:
+                self.webcam.stop()
+            except Exception as e:
+                logger.debug(f"Webcam cleanup: {e}")
             self.webcam = None
 
     # ───────────────── Gesture detection ─────────────────
 
     def _on_gesture_frame(self) -> None:
         """Grab a frame and run best-effort palm -> fist detection."""
-        if self.webcam is None or self._emitted:
+        if not self.isVisible() or self._emitted:
+            return
+        if self.webcam is None:
             return
         frame = self.webcam.get_latest_frame()
         if frame is None:
@@ -314,17 +362,16 @@ class PreKaraokeView(QWidget):
         if self._emitted:
             return
         self._emitted = True
-        self._stop_webcam()
+        self._teardown_safely()
         self.ready_signal.emit()
 
     def _cancel(self) -> None:
         if self._emitted:
             return
         self._emitted = True
-        self._countdown_timer.stop()
-        self._stop_webcam()
+        self._teardown_safely()
         self.cancel_signal.emit()
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
-        self._stop_webcam()
+        self._teardown_safely()
         super().closeEvent(event)
