@@ -42,6 +42,10 @@ class AudioCapture:
         self._stream: Optional[sd.InputStream] = None
         self._running: bool = False
 
+        self._callback_count: int = 0
+        self._peak_sum: float = 0.0
+        self._rms_sum: float = 0.0
+
     def _callback(
         self,
         indata: np.ndarray,
@@ -51,9 +55,40 @@ class AudioCapture:
     ) -> None:
         """Called by sounddevice for every audio chunk. Runs in its own thread."""
         if status:
-            logger.warning(f"Audio status: {status}")
+            logger.warning(f"Audio callback status: {status}")
 
         chunk = indata.copy().flatten()
+
+        # Diagnostic: log peak levels periodically
+        self._callback_count += 1
+        peak = float(np.max(np.abs(chunk)))
+        rms  = float(np.sqrt(np.mean(chunk ** 2)))
+        self._peak_sum += peak
+        self._rms_sum += rms
+
+        # Every ~1 second of audio, log the level
+        if self._callback_count >= 10:
+            avg_peak = self._peak_sum / self._callback_count
+            avg_rms  = self._rms_sum / self._callback_count
+
+            if avg_rms < 0.001:
+                logger.warning(
+                    f"Mic reading SILENCE: peak={avg_peak:.4f} rms={avg_rms:.6f}. "
+                    f"Check: pavucontrol -> Recording tab -> input volume"
+                )
+            elif avg_rms < 0.01:
+                logger.info(
+                    f"Mic level LOW: peak={avg_peak:.4f} rms={avg_rms:.6f}. "
+                    f"Speak louder or boost mic gain."
+                )
+            else:
+                logger.debug(
+                    f"Mic OK: peak={avg_peak:.4f} rms={avg_rms:.6f}"
+                )
+
+            self._callback_count = 0
+            self._peak_sum = 0.0
+            self._rms_sum = 0.0
 
         try:
             self.audio_queue.put_nowait(chunk)
