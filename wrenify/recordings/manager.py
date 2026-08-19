@@ -161,6 +161,7 @@ class RecordingsManager:
         fps: float,
     ) -> None:
         """Save frames as video, using audio from a WAV file."""
+        import platform
         import subprocess
 
         import cv2
@@ -185,6 +186,14 @@ class RecordingsManager:
 
         # Then: combine video + audio using ffmpeg
         try:
+            ffmpeg_kwargs: dict = {
+                "capture_output": True,
+                "check": True,
+            }
+            # Windows-only: hide console window
+            if platform.system() == "Windows":
+                ffmpeg_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
             subprocess.run(
                 [
                     "ffmpeg", "-y",
@@ -195,8 +204,7 @@ class RecordingsManager:
                     "-shortest",
                     str(output_path),
                 ],
-                capture_output=True,
-                check=True,
+                **ffmpeg_kwargs,
             )
             logger.info(f"Saved: {output_path.name}")
         except subprocess.CalledProcessError as e:
