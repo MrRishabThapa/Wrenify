@@ -16,12 +16,13 @@ import time
 from typing import Optional
 
 import cv2
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtGui import (
     QBrush,
     QColor,
     QFont,
     QImage,
+    QLinearGradient,
     QPainter,
     QPainterPath,
     QPen,
@@ -32,11 +33,12 @@ from PyQt6.QtWidgets import QWidget
 from wrenify.karaoke.session import KaraokeSession
 from wrenify.karaoke.timeline import TrackedWord, WordState
 from wrenify.ui.voice_visualizer import VoiceVisualizer
+from wrenify.ui.theme import THEME
 
 # Color palette for word states
 STATE_COLORS: dict[WordState, QColor] = {
     WordState.PENDING: QColor(255, 255, 255),   # White
-    WordState.ACTIVE:  QColor(255, 215, 0),     # Gold/yellow
+    WordState.ACTIVE:  QColor(180, 255, 57),    # Brand lime
     WordState.CORRECT: QColor(76,  217, 100),   # Green
     WordState.WRONG:   QColor(255, 59,  48),    # Red
     WordState.MISSED:  QColor(255, 59,  48),    # Red
@@ -89,8 +91,9 @@ class KaraokeView(QWidget):
             self.session.audio_level_signal.connect(self._on_mic_level)
 
         # Preload font
-        self._lyric_font = QFont("Inter", 28, QFont.Weight.Medium)
+        self._lyric_font = QFont("Inter", 32, QFont.Weight.Light)
         self._lyric_font.setStyleHint(QFont.StyleHint.SansSerif)
+        self._lyric_font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 100)
 
         self._small_font = QFont("Inter", 14)
 
@@ -208,14 +211,14 @@ class KaraokeView(QWidget):
         pulse = (math.sin(time.monotonic() * 3) + 1) / 2
         alpha = int(150 + 105 * pulse)
 
-        # Red dot
+        # Pulsing lime dot makes recording visible without competing with lyrics.
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(255, 59, 48, alpha))
+        painter.setBrush(QColor(180, 255, 57, alpha))
         painter.drawEllipse(30, 80, 16, 16)
 
         # REC text
-        painter.setFont(QFont("Inter", 13, QFont.Weight.Bold))
-        painter.setPen(QColor(255, 59, 48, alpha))
+        painter.setFont(QFont("Inter", 13, QFont.Weight.Medium))
+        painter.setPen(QColor(180, 255, 57, alpha))
         painter.drawText(52, 94, "REC")
 
     def _draw_offset_toast(self, painter: QPainter) -> None:
@@ -228,7 +231,9 @@ class KaraokeView(QWidget):
 
         painter.setFont(QFont("Inter", 18, QFont.Weight.Bold))
         painter.setPen(QColor(255, 215, 0))
-        painter.fillRect(20, 20, 340, 40, QColor(0, 0, 0, 180))
+        painter.setBrush(QColor(255, 255, 255, 24))
+        painter.setPen(QPen(QColor(255, 255, 255, 40), 1))
+        painter.drawRoundedRect(20, 20, 340, 40, 16, 16)
         painter.drawText(30, 47, self._offset_toast)
 
     def _draw_webcam(self, painter: QPainter) -> None:
@@ -360,15 +365,22 @@ class KaraokeView(QWidget):
 
         # Background
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(255, 255, 255, 60))
-        painter.drawRoundedRect(bar_x, bar_y, bar_w, bar_h, 3, 3)
+        painter.setBrush(QColor(255, 255, 255, 45))
+        painter.drawRoundedRect(bar_x, bar_y, bar_w, bar_h, 999, 999)
 
-        # Fill (gradient could go here)
-        painter.setBrush(QColor(180, 255, 57))  # Lime
+        gradient = QLinearGradient(bar_x, bar_y, bar_x + bar_w, bar_y)
+        gradient.setColorAt(0, QColor(180, 255, 57))
+        gradient.setColorAt(1, QColor(139, 92, 246))
+        painter.setBrush(gradient)
         fill_w = int(bar_w * progress)
-        painter.drawRoundedRect(bar_x, bar_y, fill_w, bar_h, 3, 3)
+        painter.drawRoundedRect(bar_x, bar_y, fill_w, bar_h, 999, 999)
 
         # Time label
+        # A bottom glass pill carries live scoring and shortcuts.
+        panel = QRect(24, self.height() - 64, self.width() - 48, 48)
+        painter.setPen(QPen(QColor(255, 255, 255, 35), 1))
+        painter.setBrush(QColor(10, 10, 21, 170))
+        painter.drawRoundedRect(panel, 20, 20)
         painter.setFont(self._small_font)
         painter.setPen(QColor(255, 255, 255, 200))
         time_str = (
@@ -387,14 +399,14 @@ class KaraokeView(QWidget):
         painter.setFont(self._small_font)
         text = f"Correct: {correct}   Wrong: {wrong}   Missed: {missed}"
         painter.setPen(QColor(255, 255, 255, 220))
-        painter.drawText(40, self.height() - 20, text)
+        painter.drawText(44, self.height() - 34, text)
 
         # Keyboard hint (bottom-right, subtle)
         hint_text = "R = Record  |  Space = Pause  |  ← → = Sync Lyrics"
         painter.setFont(QFont("Inter", 10))
         painter.setPen(QColor(255, 255, 255, 100))
         painter.drawText(
-            self.width() - 380, self.height() - 8, hint_text
+            self.width() - 390, self.height() - 34, hint_text
         )
 
     @staticmethod
