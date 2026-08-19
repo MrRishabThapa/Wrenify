@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Optional
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QPainter
+from PyQt6.QtGui import QColor, QLinearGradient, QPainter, QPen
 from PyQt6.QtWidgets import QWidget
 
 
@@ -29,10 +29,10 @@ class VoiceVisualizer(QWidget):
 
     NUM_BARS: int = 24
 
-    _COLOR_WORK_TOP    = QColor(255, 217, 61)    # Yellow
+    _COLOR_WORK_TOP    = QColor(180, 255, 57)    # Lime
     _COLOR_WORK_BOTTOM = QColor(139, 92, 246)    # Violet
-    _COLOR_SILENT      = QColor(255, 59, 48)     # Red
-    _COLOR_BG          = QColor(16, 16, 25)
+    _COLOR_SILENT      = QColor(255, 184, 77)    # Warm amber
+    _COLOR_BG          = QColor(10, 10, 21, 0)
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -89,7 +89,13 @@ class VoiceVisualizer(QWidget):
                 color = self._COLOR_SILENT
 
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(color)
+            if working:
+                gradient = QLinearGradient(x, y, x, self.height())
+                gradient.setColorAt(0, self._COLOR_WORK_TOP)
+                gradient.setColorAt(1, self._COLOR_WORK_BOTTOM)
+                painter.setBrush(gradient)
+            else:
+                painter.setBrush(color)
             painter.drawRoundedRect(x, y, bar_w, bar_h, 2, 2)
 
         painter.end()
