@@ -285,7 +285,9 @@ def full_import_song() -> None:
     console.print("\n[bold]Full Song Import (Demucs + Whisper)[/bold]")
     console.print("[dim]Takes 5-15 min | Produces perfectly aligned files[/dim]\n")
 
-    audio_path = Prompt.ask("[cyan]Path to song (with vocals)[/cyan]")
+    audio_path = Prompt.ask(
+        "[cyan]Path to song (with vocals) or YouTube URL[/cyan]"
+    )
     subprocess.run([
         "poetry", "run", "python", "-m", "wrenify.songs.full_import",
         audio_path,
