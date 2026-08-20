@@ -26,11 +26,8 @@ class RecordingsManager:
         recordings/
         └── ed-sheeran_perfect_2025-08-19_11-43-22/
             ├── voice_raw.wav        (mic only)
-            ├── voice_autotuned.wav  (pitch-corrected mic, optional)
             ├── mixed_raw.wav        (mic + music, optional)
-            ├── mixed_autotuned.wav  (autotuned mic + music, optional)
             ├── video_raw.mp4        (webcam + mixed audio, optional)
-            ├── video_autotuned.mp4  (webcam + autotuned mix, optional)
             └── meta.json
     """
 
@@ -44,7 +41,6 @@ class RecordingsManager:
         song_artist: str,
         sample_rate: int,
         voice_samples: np.ndarray,
-        voice_autotuned: Optional[np.ndarray] = None,
         instrumental_samples: Optional[np.ndarray] = None,
         video_frames: Optional[list] = None,
         video_fps: float = 24.0,
@@ -54,7 +50,6 @@ class RecordingsManager:
 
         Args:
             voice_samples: Raw microphone audio
-            voice_autotuned: Optional auto-tuned voice
             instrumental_samples: Optional matching instrumental slice
                           (enables mixed versions)
             video_frames: Optional webcam frames
@@ -79,14 +74,7 @@ class RecordingsManager:
         sf.write(str(voice_raw_path), voice_samples, sample_rate)
         logger.info("Saved: voice_raw.wav")
 
-        # ── 2. Voice only (autotuned) — if provided ──
-        voice_autotuned_path: Optional[Path] = None
-        if voice_autotuned is not None:
-            voice_autotuned_path = folder / "voice_autotuned.wav"
-            sf.write(str(voice_autotuned_path), voice_autotuned, sample_rate)
-            logger.info("Saved: voice_autotuned.wav")
-
-        # ── 3. Mixed (voice + music, raw) — if instrumental provided ──
+        # ── 2. Mixed (voice + music, raw) — if instrumental provided ──
         mixed_raw_path: Optional[Path] = None
         if instrumental_samples is not None:
             mixed_raw = mixer.mix(voice_samples, instrumental_samples)
@@ -94,19 +82,8 @@ class RecordingsManager:
             sf.write(str(mixed_raw_path), mixed_raw, sample_rate)
             logger.info("Saved: mixed_raw.wav")
 
-        # ── 4. Mixed (autotuned voice + music) — if both provided ──
-        mixed_autotuned_path: Optional[Path] = None
-        if instrumental_samples is not None and voice_autotuned is not None:
-            mixed_autotuned = mixer.mix(
-                voice_autotuned, instrumental_samples
-            )
-            mixed_autotuned_path = folder / "mixed_autotuned.wav"
-            sf.write(str(mixed_autotuned_path), mixed_autotuned, sample_rate)
-            logger.info("Saved: mixed_autotuned.wav")
-
-        # ── Video versions (if webcam captured) ──
+        # ── 3. Video version (if webcam captured) ──
         video_raw_path: Optional[Path] = None
-        video_autotuned_path: Optional[Path] = None
 
         if video_frames:
             # Video with mixed_raw audio (or voice_raw as fallback)
@@ -117,17 +94,6 @@ class RecordingsManager:
             self._save_video_with_audio(
                 video_frames, video_audio_source, video_raw_path, video_fps,
             )
-
-            # Video with mixed_autotuned (or voice_autotuned) if available
-            if mixed_autotuned_path or voice_autotuned_path:
-                video_autotuned_source = (
-                    mixed_autotuned_path or voice_autotuned_path
-                )
-                video_autotuned_path = folder / "video_autotuned.mp4"
-                self._save_video_with_audio(
-                    video_frames, video_autotuned_source,
-                    video_autotuned_path, video_fps,
-                )
 
         # Metadata
         duration = len(voice_samples) / sample_rate
@@ -140,11 +106,8 @@ class RecordingsManager:
             duration_sec=duration,
             folder=folder,
             voice_raw_path=voice_raw_path,
-            voice_autotuned_path=voice_autotuned_path,
             mixed_raw_path=mixed_raw_path,
-            mixed_autotuned_path=mixed_autotuned_path,
             video_raw_path=video_raw_path,
-            video_autotuned_path=video_autotuned_path,
         )
 
         meta_path = folder / "meta.json"
@@ -263,9 +226,7 @@ class RecordingsManager:
         """Copy recording (video preferred) to external destination.
 
         Args:
-            version: one of "voice_raw", "voice_autotuned",
-                     "mixed_raw", "mixed_autotuned",
-                     "video_raw", "video_autotuned"
+            version: one of "voice_raw", "mixed_raw", "video_raw"
         """
         destination = Path(destination)
 
