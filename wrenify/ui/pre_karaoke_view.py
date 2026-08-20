@@ -656,6 +656,13 @@ class PreKaraokeView(QWidget):
         self._teardown_safely()
         self.cancel_signal.emit()
 
+    def cleanup(self) -> None:
+        """Clean up UI resources before deletion."""
+        self._teardown_safely()
+        if hasattr(self, '_viz') and self._viz:
+            if hasattr(self._viz, '_timer') and self._viz._timer:
+                self._viz._timer.stop()
+
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         self._teardown_safely()
         super().closeEvent(event)
