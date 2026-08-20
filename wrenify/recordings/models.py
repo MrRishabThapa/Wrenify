@@ -21,15 +21,12 @@ class Recording:
 
     # Voice-only versions
     voice_raw_path:       Optional[Path] = None
-    voice_autotuned_path: Optional[Path] = None
 
     # Mixed versions (voice + music)
     mixed_raw_path:       Optional[Path] = None
-    mixed_autotuned_path: Optional[Path] = None
 
     # Video versions
     video_raw_path:       Optional[Path] = None
-    video_autotuned_path: Optional[Path] = None
 
     @property
     def display_name(self) -> str:
@@ -49,31 +46,12 @@ class Recording:
         return self.voice_raw_path is not None and self.voice_raw_path.exists()
 
     @property
-    def has_voice_autotuned(self) -> bool:
-        return (
-            self.voice_autotuned_path is not None
-            and self.voice_autotuned_path.exists()
-        )
-
-    @property
     def has_mixed_raw(self) -> bool:
         return self.mixed_raw_path is not None and self.mixed_raw_path.exists()
 
     @property
-    def has_mixed_autotuned(self) -> bool:
-        return (
-            self.mixed_autotuned_path is not None
-            and self.mixed_autotuned_path.exists()
-        )
-
-    @property
     def has_video(self) -> bool:
-        return (
-            self.video_raw_path is not None and self.video_raw_path.exists()
-        ) or (
-            self.video_autotuned_path is not None
-            and self.video_autotuned_path.exists()
-        )
+        return self.video_raw_path is not None and self.video_raw_path.exists()
 
     def to_dict(self) -> dict:
         return {
@@ -84,11 +62,8 @@ class Recording:
             "duration_sec":          self.duration_sec,
             "folder":                str(self.folder),
             "voice_raw_path":        str(self.voice_raw_path) if self.voice_raw_path else None,
-            "voice_autotuned_path":  str(self.voice_autotuned_path) if self.voice_autotuned_path else None,
             "mixed_raw_path":        str(self.mixed_raw_path) if self.mixed_raw_path else None,
-            "mixed_autotuned_path":  str(self.mixed_autotuned_path) if self.mixed_autotuned_path else None,
             "video_raw_path":        str(self.video_raw_path) if self.video_raw_path else None,
-            "video_autotuned_path":  str(self.video_autotuned_path) if self.video_autotuned_path else None,
         }
 
     @classmethod
@@ -107,9 +82,6 @@ class Recording:
             duration_sec=data["duration_sec"],
             folder=Path(data["folder"]),
             voice_raw_path=_path("voice_raw_path", "audio_path"),
-            voice_autotuned_path=_path("voice_autotuned_path", "autotuned_path"),
             mixed_raw_path=_path("mixed_raw_path"),
-            mixed_autotuned_path=_path("mixed_autotuned_path"),
             video_raw_path=_path("video_raw_path", "video_path"),
-            video_autotuned_path=_path("video_autotuned_path", "autotuned_video_path"),
         )
