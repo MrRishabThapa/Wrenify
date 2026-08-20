@@ -105,9 +105,7 @@ class RecordingsView(QWidget):
         """Play a specific version of the recording."""
         version_map = {
             "voice_raw":       recording.voice_raw_path,
-            "voice_autotuned": recording.voice_autotuned_path,
             "mixed_raw":       recording.mixed_raw_path,
-            "mixed_autotuned": recording.mixed_autotuned_path,
         }
 
         target = version_map.get(version)
