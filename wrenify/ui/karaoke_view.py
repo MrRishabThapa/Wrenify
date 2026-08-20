@@ -14,14 +14,12 @@ from typing import Optional
 import cv2
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import (
-    QBrush,
     QColor,
     QFont,
     QImage,
     QKeySequence,
     QLinearGradient,
     QPainter,
-    QPainterPath,
     QPen,
     QPixmap,
     QShortcut,
@@ -29,7 +27,17 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
 from wrenify.karaoke.session import KaraokeSession
+from wrenify.karaoke.timeline import WordDisplayState
 from wrenify.ui.voice_visualizer import VoiceVisualizer
+
+WORD_COLORS = {
+    WordDisplayState.PAST:     QColor(76, 217, 100, 160),   # Dim green
+    WordDisplayState.CURRENT:  QColor(180, 255, 57, 255),   # Bright lime
+    WordDisplayState.UPCOMING: QColor(255, 255, 255, 100),  # Dim white
+}
+
+# Current word gets slightly larger font
+CURRENT_WORD_SCALE = 1.15
 
 
 class KaraokeView(QWidget):
@@ -75,10 +83,6 @@ class KaraokeView(QWidget):
             self.session.audio_level_signal.connect(self._on_mic_level)
 
         # Preload font
-        self._lyric_font = QFont("Inter", 32, QFont.Weight.Light)
-        self._lyric_font.setStyleHint(QFont.StyleHint.SansSerif)
-        self._lyric_font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 100)
-
         self._small_font = QFont("Inter", 14)
 
         # Bottom control bar
@@ -499,43 +503,90 @@ class KaraokeView(QWidget):
         painter.drawPixmap(x, y, scaled)
 
     def _draw_lyrics(self, painter: QPainter) -> None:
-        """Draw lyrics — current line bright, others dim. No scoring colors."""
+        """Draw lyrics word-by-word with progressive highlighting."""
         tracker = self.session.lyric_tracker
-        visible = tracker.get_visible_lines(before=1, after=2)
+        display_words = tracker.get_display_words()
 
-        if not visible:
+        if not display_words:
             return
 
-        painter.setFont(self._lyric_font)
-        center_y = self.height() // 2 + 100  # Below vertical center
-        line_height = 60
+        # Group words by line_index
+        lines: dict[int, list] = {}
+        for dw in display_words:
+            lines.setdefault(dw.line_index, []).append(dw)
 
-        # Find current line index in visible list
-        current_pos = None
-        for i, (_, _, is_current) in enumerate(visible):
-            if is_current:
-                current_pos = i
+        sorted_line_indices = sorted(lines.keys())
+
+        # Find which line is current (contains CURRENT word)
+        current_line_idx = None
+        for dw in display_words:
+            if dw.state == WordDisplayState.CURRENT:
+                current_line_idx = dw.line_index
                 break
 
-        for i, (line_idx, text, is_current) in enumerate(visible):
-            # Position relative to current
-            if current_pos is not None:
-                y = center_y + (i - current_pos) * line_height
+        if current_line_idx is None:
+            # No current word — use first upcoming or last past
+            for dw in display_words:
+                if dw.state == WordDisplayState.UPCOMING:
+                    current_line_idx = dw.line_index
+                    break
+            if current_line_idx is None and sorted_line_indices:
+                current_line_idx = sorted_line_indices[-1]
+
+        # Layout: center vertically around current line
+        center_y = int(self.height() * 0.72)  # Lower third of screen
+        line_height = 55
+
+        # Font setup
+        base_font = QFont("Inter", 28, QFont.Weight.Medium)
+        current_font = QFont("Inter", 32, QFont.Weight.Bold)  # Slightly bigger for current word
+        painter.setFont(base_font)
+
+        metrics = painter.fontMetrics()
+        space_width = metrics.horizontalAdvance(" ")
+
+        for line_idx in sorted_line_indices:
+            words_in_line = lines[line_idx]
+
+            # Vertical position relative to current line
+            if current_line_idx is not None:
+                offset = line_idx - current_line_idx
             else:
-                y = center_y + i * line_height
+                offset = sorted_line_indices.index(line_idx)
 
-            # Color: current = white full opacity, others = white 40%
-            if is_current:
-                color = QColor(255, 255, 255, 255)
-            else:
-                color = QColor(255, 255, 255, 100)
+            y = center_y + offset * line_height
 
-            # Center horizontally
-            metrics = painter.fontMetrics()
-            text_width = metrics.horizontalAdvance(text)
-            x = (self.width() - text_width) // 2
+            # Skip lines way off screen
+            if y < 50 or y > self.height() - 80:
+                continue
 
-            self._draw_outlined_text(painter, text, x, y, color)
+            # Measure total line width for centering
+            total_width = 0
+            word_widths = []
+            for dw in words_in_line:
+                if dw.state == WordDisplayState.CURRENT:
+                    painter.setFont(current_font)
+                else:
+                    painter.setFont(base_font)
+                w = painter.fontMetrics().horizontalAdvance(dw.text)
+                word_widths.append(w)
+                total_width += w
+            total_width += space_width * (len(words_in_line) - 1)
+
+            # Start x for centered line
+            x = (self.width() - total_width) // 2
+
+            # Draw each word
+            for dw, w_width in zip(words_in_line, word_widths):
+                color = WORD_COLORS.get(dw.state, QColor(255, 255, 255, 100))
+
+                if dw.state == WordDisplayState.CURRENT:
+                    painter.setFont(current_font)
+                else:
+                    painter.setFont(base_font)
+
+                self._draw_outlined_text(painter, dw.text, x, y, color)
+                x += w_width + space_width
 
     def _draw_outlined_text(
         self,
@@ -545,19 +596,22 @@ class KaraokeView(QWidget):
         y: int,
         color: QColor,
     ) -> None:
-        """Draw text with black outline — no background needed."""
+        """Draw text with dark outline for readability over any background."""
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtGui import QBrush, QPainterPath, QPen
+
         path = QPainterPath()
         path.addText(x, y, painter.font(), text)
 
-        # Thick outline for readability over any background
-        outline_pen = QPen(QColor(0, 0, 0, 240))
-        outline_pen.setWidth(5)
+        # Dark outline
+        outline_pen = QPen(QColor(0, 0, 0, 230))
+        outline_pen.setWidth(4)
         outline_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(outline_pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(path)
 
-        # Fill
+        # Colored fill
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(color))
         painter.drawPath(path)
