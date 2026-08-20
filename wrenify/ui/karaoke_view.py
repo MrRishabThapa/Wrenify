@@ -123,6 +123,12 @@ class KaraokeView(QWidget):
         else:
             self.mini_viz.set_status("silent")
 
+    def cleanup(self) -> None:
+        """Clean up UI resources before deletion."""
+        if hasattr(self, 'mini_viz') and self.mini_viz:
+            if hasattr(self.mini_viz, '_timer') and self.mini_viz._timer:
+                self.mini_viz._timer.stop()
+
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         # Control bar pinned to the bottom
         self._control_bar.setGeometry(
