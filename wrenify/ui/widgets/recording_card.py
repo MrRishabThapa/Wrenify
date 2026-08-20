@@ -73,20 +73,12 @@ class RecordingCard(GlassCard):
         mixed_row.setSpacing(6)
 
         if recording.has_mixed_raw:
-            btn = self._mini_btn("▶ Raw")
+            btn = self._mini_btn("▶ With Music")
             btn.clicked.connect(
                 lambda: self.play_requested.emit(recording, "mixed_raw")
             )
             mixed_row.addWidget(btn)
-
-        if recording.has_mixed_autotuned:
-            btn = self._mini_btn("✨ Auto-Tune", accent=True)
-            btn.clicked.connect(
-                lambda: self.play_requested.emit(recording, "mixed_autotuned")
-            )
-            mixed_row.addWidget(btn)
-
-        if not recording.has_mixed_raw and not recording.has_mixed_autotuned:
+        else:
             no_mix = self._mini_btn("Not available")
             no_mix.setEnabled(False)
             mixed_row.addWidget(no_mix)
@@ -107,16 +99,9 @@ class RecordingCard(GlassCard):
         voice_row.setSpacing(6)
 
         if recording.has_voice_raw:
-            btn = self._mini_btn("▶ Raw")
+            btn = self._mini_btn("▶ Voice Only")
             btn.clicked.connect(
                 lambda: self.play_requested.emit(recording, "voice_raw")
-            )
-            voice_row.addWidget(btn)
-
-        if recording.has_voice_autotuned:
-            btn = self._mini_btn("✨ Auto-Tune", accent=True)
-            btn.clicked.connect(
-                lambda: self.play_requested.emit(recording, "voice_autotuned")
             )
             voice_row.addWidget(btn)
 
@@ -140,50 +125,31 @@ class RecordingCard(GlassCard):
 
         layout.addLayout(actions)
 
-    def _mini_btn(
-        self, text: str, small: bool = False, accent: bool = False
-    ) -> QPushButton:
+    def _mini_btn(self, text: str, small: bool = False) -> QPushButton:
         btn = QPushButton(text)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setFixedHeight(32)
         if small:
             btn.setFixedWidth(32)
 
-        if accent:
-            style = """
-                QPushButton {
-                    background: rgba(180, 255, 57, 0.15);
-                    border: 1px solid rgba(180, 255, 57, 0.4);
-                    border-radius: 8px;
-                    color: #B4FF39;
-                    font-size: 11px;
-                    font-weight: 600;
-                    padding: 4px 8px;
-                }
-                QPushButton:hover {
-                    background: rgba(180, 255, 57, 0.25);
-                    border-color: rgba(180, 255, 57, 0.6);
-                }
-            """
-        else:
-            style = """
-                QPushButton {
-                    background: rgba(255, 255, 255, 0.05);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 8px;
-                    color: white;
-                    font-size: 11px;
-                    padding: 4px 8px;
-                }
-                QPushButton:hover {
-                    background: rgba(180, 255, 57, 0.15);
-                    border-color: rgba(180, 255, 57, 0.4);
-                }
-                QPushButton:disabled {
-                    color: rgba(255, 255, 255, 0.3);
-                    background: rgba(255, 255, 255, 0.02);
-                }
-            """
+        style = """
+            QPushButton {
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
+                color: white;
+                font-size: 11px;
+                padding: 4px 8px;
+            }
+            QPushButton:hover {
+                background: rgba(180, 255, 57, 0.15);
+                border-color: rgba(180, 255, 57, 0.4);
+            }
+            QPushButton:disabled {
+                color: rgba(255, 255, 255, 0.3);
+                background: rgba(255, 255, 255, 0.02);
+            }
+        """
 
         btn.setStyleSheet(style)
         return btn
