@@ -158,59 +158,73 @@ class RecordingsManager:
         frames: list,
         audio_path: Path,
         output_path: Path,
-        fps: float,
+        fps: float = 24.0,
     ) -> None:
-        """Save frames as video, using audio from a WAV file."""
+        """Save frames as video with audio, using ACTUAL frame timing."""
         import platform
         import subprocess
 
         import cv2
 
-        # First: write silent video to temp file
-        temp_video = output_path.parent / f"_temp_{output_path.stem}.mp4"
-
         if not frames:
             return
 
-        first_frame = frames[0].image
-        height, width = first_frame.shape[:2]
+        # Calculate actual FPS from timestamps if available
+        actual_fps = fps
+        if hasattr(frames[0], 'timestamp') and len(frames) > 1:
+            duration = frames[-1].timestamp - frames[0].timestamp
+            if duration > 0:
+                actual_fps = len(frames) / duration
+                # Clamp to reasonable range
+                actual_fps = max(10.0, min(actual_fps, 60.0))
+                logger.info(
+                    f"Calculated actual FPS: {actual_fps:.2f} "
+                    f"from {len(frames)} frames over {duration:.2f}s"
+                )
+
+        first = frames[0].image if hasattr(frames[0], 'image') else frames[0]
+        height, width = first.shape[:2]
+
+        temp_video = Path(str(output_path).replace(".mp4", "_temp.mp4"))
 
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         writer = cv2.VideoWriter(
-            str(temp_video), fourcc, fps, (width, height)
+            str(temp_video), fourcc, actual_fps, (width, height)
         )
 
         for frame in frames:
-            writer.write(frame.image)
+            img = frame.image if hasattr(frame, 'image') else frame
+            writer.write(img)
         writer.release()
 
-        # Then: combine video + audio using ffmpeg
-        try:
-            ffmpeg_kwargs: dict = {
-                "capture_output": True,
-                "check": True,
-            }
-            # Windows-only: hide console window
-            if platform.system() == "Windows":
-                ffmpeg_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        # Mux with audio using ffmpeg
+        # CRITICAL: use -async 1 or -vsync cfr to keep A/V in sync
+        ffmpeg_kwargs: dict = {"capture_output": True, "check": True}
+        if platform.system() == "Windows":
+            ffmpeg_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
+        try:
             subprocess.run(
                 [
                     "ffmpeg", "-y",
                     "-i", str(temp_video),
                     "-i", str(audio_path),
-                    "-c:v", "copy",
+                    "-c:v", "libx264",
+                    "-preset", "fast",
                     "-c:a", "aac",
-                    "-shortest",
+                    "-b:a", "192k",
+                    "-shortest",           # End when shortest stream ends
+                    "-vsync", "cfr",       # Constant frame rate
+                    "-af", "aresample=async=1",  # Fix audio sync drift
                     str(output_path),
                 ],
                 **ffmpeg_kwargs,
             )
-            logger.info(f"Saved: {output_path.name}")
+            logger.info(f"Saved synced video: {output_path.name} @ {actual_fps:.1f}fps")
         except subprocess.CalledProcessError as e:
-            logger.error(
-                f"ffmpeg failed: {e.stderr.decode() if e.stderr else e}"
-            )
+            logger.error(f"ffmpeg failed: {e}")
+            # Fallback: just copy temp video without fancy flags
+            shutil.copy(temp_video, output_path)
         finally:
             if temp_video.exists():
                 temp_video.unlink()
