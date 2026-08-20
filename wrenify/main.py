@@ -25,7 +25,7 @@ def cli(ctx: click.Context) -> None:
     """
     Wrenify — Your voice. Perfected.
 
-    A local-first karaoke studio with vocal separation, auto-tune,
+    A local-first karaoke studio with vocal separation,
     and recording capabilities.
 
     Run without arguments to launch the desktop app.
@@ -156,7 +156,6 @@ def _print_system_info() -> None:
     console.print("\n[bold]Config:[/bold]")
     console.print(f"  Sample rate:  {CONFIG.audio.sample_rate} Hz")
     console.print(f"  Whisper:      {CONFIG.speech.model_size} ({CONFIG.speech.compute_type})")
-    console.print(f"  Auto-tune:    {CONFIG.autotune.key} {CONFIG.autotune.scale}")
 
     # Check for external dependencies
     console.print("\n[bold]Dependencies:[/bold]")
