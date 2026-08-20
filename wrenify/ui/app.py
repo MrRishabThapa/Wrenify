@@ -96,15 +96,14 @@ class MainWindow(QMainWindow):
         self._add_section(layout, "WORKSPACE")
         self._add_nav(layout, "Studio", 0)
         self._add_section(layout, "LIBRARY")
-        self._add_nav(layout, "Songs", 5)
-        self._add_nav(layout, "Recordings", 7)
+        self._add_nav(layout, "Songs", 4)
+        self._add_nav(layout, "Recordings", 6)
         self._add_section(layout, "VOICE")
-        self._add_nav(layout, "Auto-Tune", 1)
-        self._add_nav(layout, "Speech", 2)
+        self._add_nav(layout, "Speech", 1)
         self._add_section(layout, "PRODUCTION")
-        self._add_nav(layout, "Lyrics", 3)
-        self._add_nav(layout, "Import", 6)
-        self._add_nav(layout, "Video", 4)
+        self._add_nav(layout, "Lyrics", 2)
+        self._add_nav(layout, "Import", 5)
+        self._add_nav(layout, "Video", 3)
 
         layout.addStretch()
 
@@ -135,13 +134,13 @@ class MainWindow(QMainWindow):
 
     def _select_nav(self, index: int) -> None:
         """Keep the glass navigation state aligned with the active page."""
-        if index == 5:
+        if index == 4:
             self._show_library()
             return
-        if index == 6:
+        if index == 5:
             self._show_import()
             return
-        if index == 7:
+        if index == 6:
             self._show_recordings()
             return
         self.stack.setCurrentIndex(index)
@@ -157,16 +156,6 @@ class MainWindow(QMainWindow):
         )
         pages = [
             self.home_view,
-            PlaceholderPage(
-                "Auto-Tune",
-                "Real-time pitch correction for your voice.",
-                [
-                    "Pitch tracking with the WORLD vocoder",
-                    "Key and scale presets (major, minor, pentatonic)",
-                    "Adjustable correction strength",
-                    "Vibrato and formant shaping effects",
-                ],
-            ),
             PlaceholderPage(
                 "Speech",
                 "Offline voice recognition, fully local.",
@@ -273,7 +262,6 @@ class MainWindow(QMainWindow):
 
         for text in (
             f"Audio: {CONFIG.audio.sample_rate} Hz",
-            f"Auto-tune: {CONFIG.autotune.key} {CONFIG.autotune.scale}",
             f"Whisper: {CONFIG.speech.model_size} "
             f"({CONFIG.speech.compute_type})",
             f"Device: index {CONFIG.audio.device_index}"
