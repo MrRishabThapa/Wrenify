@@ -57,16 +57,6 @@ class AudioConfig:
 
 
 @dataclass
-class AutoTuneConfig:
-    """WORLD vocoder pitch correction settings."""
-
-    enabled:  bool  = True
-    strength: float = 0.7      # 0.0 = natural, 1.0 = T-Pain
-    key:      str   = "C"
-    scale:    str   = "major"  # major | minor | pentatonic | blues
-
-
-@dataclass
 class LyricsConfig:
     """Lyrics fetching and display settings."""
 
@@ -137,7 +127,6 @@ class SpeechConfig:
 @dataclass
 class AppConfig:
     audio:    AudioConfig    = field(default_factory=AudioConfig)
-    autotune: AutoTuneConfig = field(default_factory=AutoTuneConfig)
     lyrics:   LyricsConfig   = field(default_factory=LyricsConfig)
     video:    VideoConfig    = field(default_factory=VideoConfig)
     speech:   SpeechConfig   = field(default_factory=SpeechConfig)
