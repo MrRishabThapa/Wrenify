@@ -148,47 +148,60 @@ class KaraokeSession(QObject):
         logger.info("Karaoke session running with music")
 
     def stop(self) -> None:
-        """Stop the session, save any recording, and emit final score."""
+        """Stop the session safely and emit finish signal."""
         if not self._running:
             return
 
-        # If still recording when session ends, capture end time
+        logger.info("Stopping karaoke session...")
+        self._running = False
+
+        # Capture end time if recording
         if self._is_recording:
             self._recording_end_song_time = self.timeline.now()
             self._is_recording = False
-            logger.info(
-                f"Recording STOPPED at song time "
-                f"{self._recording_end_song_time:.2f}s (session end)"
-            )
 
-        logger.info("Stopping karaoke session")
-
-        self._running = False
-        self._ui_timer.stop()
-        if self._audio_forwarder is not None:
+        # 1. Stop Qt timers FIRST (prevents callback firing during cleanup)
+        if hasattr(self, '_ui_timer') and self._ui_timer is not None:
+            self._ui_timer.stop()
+        if hasattr(self, '_audio_forwarder') and self._audio_forwarder is not None:
             self._audio_forwarder.stop()
-            self._audio_forwarder = None
 
-        # Capture sample rate BEFORE closing capture
         sample_rate = (
             self.audio_capture.cfg.sample_rate
-            if self.audio_capture is not None
+            if self.audio_capture
             else 44100
         )
 
-        # Stop the song
-        self.player.stop()
+        # 2. Stop player
+        if hasattr(self, 'player') and self.player is not None:
+            try:
+                self.player.stop()
+            except Exception:
+                pass
 
+        # 3. Stop background threads cleanly
         if self.audio_capture is not None:
-            self.audio_capture.stop()
+            try:
+                self.audio_capture.stop()
+            except Exception:
+                pass
             self.audio_capture = None
+
         if self.webcam is not None:
-            self.webcam.stop()
+            try:
+                self.webcam.stop()
+            except Exception:
+                pass
             self.webcam = None
 
-        logger.info("Session finished")
+        if getattr(self, 'streamer', None) is not None:
+            try:
+                self.streamer.stop()
+            except Exception:
+                pass
+            self.streamer = None
 
-        # Save recording to library if we recorded anything
+        # 4. Save recording
         if self._recorded_audio:
             try:
                 self._save_recording(sample_rate)
@@ -198,7 +211,17 @@ class KaraokeSession(QObject):
 
                 traceback.print_exc()
 
-        self.finished_signal.emit()  # No args
+        logger.info("Session cleanup complete")
+
+        # 5. Emit signal on next event loop tick (prevents deletion race)
+        from PyQt6.QtCore import QTimer
+
+        QTimer.singleShot(50, lambda: self.finished_signal.emit())
+
+    def cleanup(self) -> None:
+        """Explicit cleanup before object deletion."""
+        self.stop()
+        self.deleteLater()
 
     def end_early(self) -> None:
         """User-triggered early stop. Same as stop() but logged distinctly."""
