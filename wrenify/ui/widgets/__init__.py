@@ -94,7 +94,6 @@ class WelcomePage(QWidget):
         chips.setAlignment(Qt.AlignmentFlag.AlignCenter)
         for text in (
             f"Audio · {CONFIG.audio.sample_rate} Hz",
-            f"Auto-tune · {CONFIG.autotune.key} {CONFIG.autotune.scale}",
             f"Whisper · {CONFIG.speech.model_size} ({CONFIG.speech.compute_type})",
             "Device · system default" if CONFIG.audio.device_index is None else f"Device · {CONFIG.audio.device_index}",
         ):
