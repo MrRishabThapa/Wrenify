@@ -2,7 +2,7 @@
 Wrenify — Audio effects rack.
 
 Wraps Spotify's pedalboard library for reverb, compression, and EQ.
-These are applied AFTER auto-tune to polish the vocal sound.
+A light vocal polish chain for recorded performances.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from wrenify.core.config import CONFIG
 
 class EffectsRack:
     """
-    Chainable audio effects for post-autotune vocal polish.
+    Chainable audio effects for vocal polish.
 
     Default chain: HP filter → Compressor → Reverb
     (mimics a light professional vocal treatment)
