@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from enum import Enum
 from threading import Lock
 from typing import TYPE_CHECKING, Optional
 
@@ -18,6 +19,27 @@ from wrenify.lyrics.parser import ParsedLyrics
 
 if TYPE_CHECKING:
     from wrenify.audio.player import AudioPlayer
+
+
+class WordDisplayState(Enum):
+    """Visual state for karaoke display (NOT scoring)."""
+
+    PAST = "past"           # Already passed
+    CURRENT = "current"     # Being sung right now
+    UPCOMING = "upcoming"   # Not yet reached
+
+
+@dataclass
+class DisplayWord:
+    """A word with its display state for rendering."""
+
+    text: str
+    start: float
+    end: float
+    line_index: int
+    word_index: int
+    state: WordDisplayState
+    is_line_start: bool = False  # First word of a line
 
 
 @dataclass
@@ -70,30 +92,45 @@ class Timeline:
         for line_idx, line in enumerate(self.lyrics.lines):
             if not line.text:
                 continue
+
             if line.has_word_timing:
                 for word_idx, word in enumerate(line.words):
+                    end = word.end
+                    if end is None:
+                        # Use next word's start, or line end
+                        if word_idx + 1 < len(line.words):
+                            end = line.words[word_idx + 1].start
+                        else:
+                            end = line.end or (word.start + 0.8)
+
                     tracked.append(TrackedWord(
                         text=word.text,
                         start=word.start,
-                        end=word.end or (word.start + 1.0),
+                        end=end,
                         line_index=line_idx,
                         word_index=word_idx,
                     ))
             else:
+                # Evenly distribute words across line duration
                 words = line.text.split()
                 if not words:
                     continue
-                line_dur = (line.end or line.start + 3.0) - line.start
+                line_start = line.start
+                line_end = line.end or (line.start + 3.0)
+                line_dur = line_end - line_start
                 per_word = line_dur / len(words)
+
                 for word_idx, w in enumerate(words):
-                    start = line.start + word_idx * per_word
+                    start = line_start + word_idx * per_word
+                    end = start + per_word
                     tracked.append(TrackedWord(
                         text=w,
                         start=start,
-                        end=start + per_word,
+                        end=end,
                         line_index=line_idx,
                         word_index=word_idx,
                     ))
+
         return tracked
 
     def start(self) -> None:
@@ -138,3 +175,104 @@ class Timeline:
 
     def total_words(self) -> int:
         return len(self.words)
+
+    def get_display_words(
+        self,
+        current_time: Optional[float] = None,
+        context_lines: int = 2,
+    ) -> list[DisplayWord]:
+        """
+        Get words around the current position with display states.
+
+        Returns words from (current_line - 1) to (current_line + context_lines)
+        each tagged as PAST, CURRENT, or UPCOMING based on song time.
+
+        Args:
+            current_time: Song time in seconds (defaults to self.now())
+            context_lines: How many lines after current to include
+
+        Returns:
+            List of DisplayWord ready for rendering
+        """
+        now = current_time if current_time is not None else self.now()
+
+        # Find current line index
+        current_line_idx = self.lyrics.line_index_at(now)
+        if current_line_idx is None:
+            # Before first line or after last — show first few lines as upcoming
+            if not self.lyrics.lines:
+                return []
+            # If past the end
+            if self.lyrics.lines and now > (self.lyrics.lines[-1].end or float("inf")):
+                # Show last few lines as all PAST
+                start_line = max(0, len(self.lyrics.lines) - 3)
+                result = []
+                for li in range(start_line, len(self.lyrics.lines)):
+                    line_words = [w for w in self.words if w.line_index == li]
+                    for wi, w in enumerate(line_words):
+                        result.append(DisplayWord(
+                            text=w.text,
+                            start=w.start,
+                            end=w.end,
+                            line_index=li,
+                            word_index=wi,
+                            state=WordDisplayState.PAST,
+                            is_line_start=(wi == 0),
+                        ))
+                return result
+
+            # Before start — show first lines as upcoming
+            result = []
+            for li in range(min(3, len(self.lyrics.lines))):
+                line_words = [w for w in self.words if w.line_index == li]
+                for wi, w in enumerate(line_words):
+                    result.append(DisplayWord(
+                        text=w.text,
+                        start=w.start,
+                        end=w.end,
+                        line_index=li,
+                        word_index=wi,
+                        state=WordDisplayState.UPCOMING,
+                        is_line_start=(wi == 0),
+                    ))
+            return result
+
+        # Get words from previous line through current + context
+        start_line = max(0, current_line_idx - 1)
+        end_line = min(len(self.lyrics.lines), current_line_idx + context_lines + 1)
+
+        result: list[DisplayWord] = []
+
+        for li in range(start_line, end_line):
+            line_words = [w for w in self.words if w.line_index == li]
+
+            for wi, w in enumerate(line_words):
+                # Determine state based on time
+                if w.end <= now:
+                    state = WordDisplayState.PAST
+                elif w.start <= now < w.end:
+                    state = WordDisplayState.CURRENT
+                else:
+                    state = WordDisplayState.UPCOMING
+
+                result.append(DisplayWord(
+                    text=w.text,
+                    start=w.start,
+                    end=w.end,
+                    line_index=li,
+                    word_index=wi,
+                    state=state,
+                    is_line_start=(wi == 0),
+                ))
+
+        return result
+
+    def get_current_word(self, current_time: Optional[float] = None) -> Optional[TrackedWord]:
+        """Get the single word being sung right now."""
+        now = current_time if current_time is not None else self.now()
+
+        for w in self.words:
+            if w.start <= now < w.end:
+                return w
+
+        return None
