@@ -3,6 +3,7 @@
 import sys
 from typing import Optional
 
+from loguru import logger
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
@@ -11,6 +12,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -33,7 +35,7 @@ from wrenify.ui.widgets import (
     PlaceholderPage,
     WelcomePage,
 )
-from wrenify.ui.widgets.glass import CaptionLabel, GradientBackground
+from wrenify.ui.widgets.glass import CaptionLabel, GradientBackground, SidebarItem
 
 
 class MainWindow(QMainWindow):
@@ -110,6 +112,14 @@ class MainWindow(QMainWindow):
         hint.setStyleSheet(f"color: {THEME.colors.text_disabled}; font-size: 11px; padding: 8px;")
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(hint)
+
+        # Exit button at bottom of sidebar
+        exit_item = SidebarItem("Exit App", active=False)
+        exit_item.clicked.connect(self._exit_app)
+        exit_item.setStyleSheet(
+            exit_item.styleSheet() + " QPushButton#SidebarItem { color: #FF453A; }"
+        )  # Tint red
+        layout.addWidget(exit_item)
         return sidebar
 
     def _add_section(self, layout: QVBoxLayout, title: str) -> None:
@@ -210,22 +220,26 @@ class MainWindow(QMainWindow):
 
     def _show_home(self) -> None:
         """Show the Studio landing page."""
+        self._cleanup_transient_views()
         self.stack.setCurrentWidget(self.home_view)
         self._check_nav(0)
 
     def _show_library(self) -> None:
         """Show the in-app song library (rescanning first)."""
+        self._cleanup_transient_views()
         self.library_view.reload_songs()
         self.stack.setCurrentWidget(self.library_view)
         self._check_nav(5)
 
     def _show_import(self) -> None:
         """Show the import screen."""
+        self._cleanup_transient_views()
         self.stack.setCurrentWidget(self.import_view)
         self._check_nav(6)
 
     def _show_recordings(self) -> None:
         """Show the saved recordings library (rescanning first)."""
+        self._cleanup_transient_views()
         self.recordings_view.reload()
         self.stack.setCurrentWidget(self.recordings_view)
         self._check_nav(7)
@@ -273,21 +287,30 @@ class MainWindow(QMainWindow):
 
     def launch_karaoke_with_song(self, song: Song) -> None:
         """Show the ready screen for a fully-loaded Song."""
+        from wrenify.ui.pre_karaoke_view import PreKaraokeView
+
+        self._cleanup_transient_views()
         self._pending_song = song
+
         self._pre_view = PreKaraokeView(song)
         self._pre_view.ready_signal.connect(self._start_karaoke_session)
-        self._pre_view.cancel_signal.connect(self._back_to_menu)
-        self.setCentralWidget(self._pre_view)
+        self._pre_view.cancel_signal.connect(self._show_library)
+
+        self._show_transient_view(self._pre_view)
 
     def _start_karaoke_session(self) -> None:
         """Called after the user confirms ready (gesture or countdown)."""
         if self._pending_song is None:
             return
 
+        from wrenify.karaoke.session import KaraokeSession
+        from wrenify.ui.karaoke_view import KaraokeView
+
         self.session = KaraokeSession(self._pending_song, parent=self)
         self.karaoke_view = KaraokeView(self.session)
+
         self.session.finished_signal.connect(self._show_session_end)
-        self.setCentralWidget(self.karaoke_view)
+        self._show_transient_view(self.karaoke_view)
         self.session.start()
 
     def _show_session_end(self) -> None:
@@ -298,6 +321,8 @@ class MainWindow(QMainWindow):
             and self.session._recorded_audio
         )
 
+        from wrenify.ui.results_view import SessionEndView
+
         self.end_view = SessionEndView(
             song=self._pending_song,
             recording_saved=recording_was_saved,
@@ -306,17 +331,65 @@ class MainWindow(QMainWindow):
         self.end_view.library_requested.connect(self._show_library)
         self.end_view.recordings_requested.connect(self._show_recordings)
 
-        self.setCentralWidget(self.end_view)
+        self._show_transient_view(self.end_view)
 
     def _sing_again(self) -> None:
         """Sing the same song again, straight into the karaoke view."""
         if self._pending_song is not None:
-            self._start_karaoke_session()
+            self.launch_karaoke_with_song(self._pending_song)
 
-    def _back_to_menu(self) -> None:
-        """Restore the main navigation UI after a karaoke session."""
-        self.setCentralWidget(QWidget())
-        self._build_main_ui()
+    # ───────────────── Transient view lifecycle ─────────────────
+
+    def _cleanup_transient_views(self) -> None:
+        """Remove and clean up transient views from the stack to prevent memory leaks."""
+        from wrenify.ui.karaoke_view import KaraokeView
+        from wrenify.ui.pre_karaoke_view import PreKaraokeView
+        from wrenify.ui.results_view import SessionEndView
+
+        # Iterate backwards through stack
+        for i in range(self.stack.count() - 1, -1, -1):
+            widget = self.stack.widget(i)
+            if isinstance(widget, (PreKaraokeView, KaraokeView, SessionEndView)):
+                self.stack.removeWidget(widget)
+                if hasattr(widget, 'cleanup'):
+                    try:
+                        widget.cleanup()
+                    except Exception as e:
+                        logger.debug(f"Cleanup error on {widget}: {e}")
+                if hasattr(widget, 'session') and widget.session:
+                    try:
+                        # Stop session cleanly; stop() re-emits finished_signal,
+                        # so disconnect it first to avoid popping the end view
+                        # after the user has navigated away.
+                        widget.session.finished_signal.disconnect()
+                    except Exception:
+                        pass
+                    try:
+                        widget.session.cleanup()
+                    except Exception as e:
+                        logger.debug(f"Session cleanup error: {e}")
+
+                widget.setParent(None)
+                widget.deleteLater()
+
+    def _show_transient_view(self, view: QWidget) -> None:
+        """Safely show a temporary view (Karaoke, Prep, End) inside the stack."""
+        self.stack.addWidget(view)
+        self.stack.setCurrentWidget(view)
+
+    def _exit_app(self) -> None:
+        """Clean exit application with confirmation."""
+        reply = QMessageBox.question(
+            self,
+            "Exit Wrenify?",
+            "Are you sure you want to exit?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            logger.info("User requested exit")
+            self._cleanup_transient_views()
+            QApplication.quit()
 
 
 def run() -> int:
