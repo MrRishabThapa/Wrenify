@@ -74,29 +74,49 @@ class AudioPlayer:
         self._stopped.set()  # Not playing initially
 
     def load(self, path: Union[Path, str]) -> None:
-        """Load an audio file. Supports MP3, WAV, OGG, FLAC."""
+        """Load an audio file."""
+        audio, sr = self._load_file(path)
+        self._audio = audio
+        self._sample_rate = sr
+        self._channels = self._audio.shape[1]
+        self._duration = len(self._audio) / self._sample_rate
+        logger.info(f"Loaded {Path(path).name}: {self._duration:.2f}s")
+
+    def _load_file(self, path: Union[Path, str]) -> tuple[np.ndarray, int]:
+        """Helper to load audio via soundfile or pydub."""
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"Audio file not found: {path}")
-
-        logger.info(f"Loading audio: {path.name}")
-
-        # Try soundfile first (fast for WAV/FLAC/OGG)
         try:
-            self._audio, self._sample_rate = sf.read(
-                str(path), dtype="float32", always_2d=True
-            )
+            audio, sr = sf.read(str(path), dtype="float32", always_2d=True)
         except Exception:
-            # Fall back to pydub for MP3
-            self._audio, self._sample_rate = self._load_via_pydub(path)
+            audio, sr = self._load_via_pydub(path)
+        return audio, sr
 
-        self._channels = self._audio.shape[1]
-        self._duration = len(self._audio) / self._sample_rate
+    def switch_track(self, new_path: Union[Path, str]) -> None:
+        """
+        Seamlessly swap the audio track being played while maintaining
+        current playback position. (e.g. Instrumental <-> Original)
+        """
+        logger.info(f"Seamlessly switching track to: {Path(new_path).name}")
+        new_audio, sr = self._load_file(new_path)
 
-        logger.info(
-            f"Loaded {path.name}: {self._duration:.2f}s "
-            f"@ {self._sample_rate}Hz, {self._channels}ch"
-        )
+        if sr != self._sample_rate:
+            logger.warning("Sample rate mismatch during hot-swap, resampling...")
+            import librosa
+
+            # Resample needs shape (channels, samples); librosa expects
+            # (samples,) for mono. Both tracks are typically 44.1k from demucs.
+            new_audio = librosa.resample(
+                new_audio.T, orig_sr=sr, target_sr=self._sample_rate
+            ).T
+
+        with self._lock:
+            self._audio = new_audio
+            self._channels = self._audio.shape[1]
+            self._duration = len(self._audio) / self._sample_rate
+            # Ensure position doesn't exceed new duration (should be same length anyway)
+            self._position_samples = min(self._position_samples, len(self._audio) - 1)
 
     @staticmethod
     def _load_via_pydub(path: Path) -> tuple[np.ndarray, int]:
@@ -154,8 +174,6 @@ class AudioPlayer:
             )
             self._stream.start()
 
-            total_samples = len(self._audio)
-
             while not self._stopped.is_set():
                 # Handle pause
                 if self._paused.is_set():
@@ -165,6 +183,9 @@ class AudioPlayer:
                 # Get current position (thread-safe)
                 with self._lock:
                     pos = self._position_samples
+
+                # Re-read each iteration so switch_track() hot-swaps work
+                total_samples = len(self._audio)
 
                 # End of song?
                 if pos >= total_samples:
