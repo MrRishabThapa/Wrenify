@@ -27,6 +27,7 @@ class Song:
     lyrics_path:       Path
 
     # Optional metadata
+    original_path: Optional[Path] = None  # Path to original vocals track
     album:      Optional[str] = None
     duration:   Optional[float] = None
     key:        Optional[str] = None
@@ -80,6 +81,19 @@ class Song:
         if meta_file.exists():
             meta = json.loads(meta_file.read_text())
 
+        # Find original audio if it exists (saved by full_import)
+        original: Optional[Path] = None
+        for ext in ("mp3", "wav", "ogg", "flac"):
+            candidate = folder / f"original.{ext}"
+            if candidate.exists():
+                original = candidate
+                break
+        # Fallback: meta.json records the backup filename (e.g. original.mp3)
+        if original is None and meta.get("original_file"):
+            candidate = folder / meta["original_file"]
+            if candidate.exists():
+                original = candidate
+
         # Cover art
         cover = folder / "cover.jpg"
         if not cover.exists():
@@ -92,6 +106,7 @@ class Song:
             artist=meta.get("artist", "Unknown"),
             instrumental_path=instrumental,
             lyrics_path=lyrics,
+            original_path=original,
             album=meta.get("album"),
             duration=meta.get("duration"),
             key=meta.get("key"),
