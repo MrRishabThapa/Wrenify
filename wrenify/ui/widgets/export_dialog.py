@@ -28,7 +28,6 @@ class ExportDialog(QDialog):
     Custom export dialog showing all versions organized by:
       - Media type (Audio / Video)
       - Music (With music / Voice only)
-      - Voice (Raw / Auto-tuned)
     """
 
     def __init__(
@@ -82,23 +81,17 @@ class ExportDialog(QDialog):
 
         # AUDIO SECTION
         audio_section = self._build_section("🎵 AUDIO", [
-            ("mixed_raw",       "With Music · Raw voice",
+            ("mixed_raw",       "With Music",
              self.recording.mixed_raw_path, False),
-            ("mixed_autotuned", "With Music · Auto-tuned ✨",
-             self.recording.mixed_autotuned_path, False),
-            ("voice_raw",       "Voice Only · Raw",
+            ("voice_raw",       "Voice Only",
              self.recording.voice_raw_path, False),
-            ("voice_autotuned", "Voice Only · Auto-tuned ✨",
-             self.recording.voice_autotuned_path, False),
         ])
         root.addWidget(audio_section)
 
         # VIDEO SECTION
         video_section = self._build_section("🎥 VIDEO", [
-            ("video_raw",       "With Music · Raw voice",
+            ("video_raw",       "With Music",
              self.recording.video_raw_path, True),
-            ("video_autotuned", "With Music · Auto-tuned ✨",
-             self.recording.video_autotuned_path, True),
             # Voice-only videos not implemented yet — omit
         ])
         root.addWidget(video_section)
