@@ -216,18 +216,25 @@ class KaraokeView(QWidget):
         layout.addStretch()
 
         self.record_btn = self._make_control_btn("⏺ Record")
-        self.autotune_btn = self._make_control_btn("✨ Auto-Tune")
+        self.original_btn = self._make_control_btn("🎙️ Original")
         self.end_btn = self._make_control_btn("⏹ End", danger=True)
 
+        # Disable if song doesn't have an original file (e.g. manually added instrumental)
+        if not self.session.song.original_path:
+            self.original_btn.setEnabled(False)
+            self.original_btn.setToolTip(
+                "Original track not available for this song"
+            )
+
         layout.addWidget(self.record_btn)
-        layout.addWidget(self.autotune_btn)
+        layout.addWidget(self.original_btn)
         layout.addWidget(self.end_btn)
 
         self.seek_back_btn.clicked.connect(lambda: self._seek(-5.0))
         self.pause_btn.clicked.connect(self._toggle_pause)
         self.seek_fwd_btn.clicked.connect(lambda: self._seek(+5.0))
         self.record_btn.clicked.connect(self._toggle_recording)
-        self.autotune_btn.clicked.connect(self._toggle_autotune)
+        self.original_btn.clicked.connect(self._toggle_original_track)
         self.end_btn.clicked.connect(self._end_karaoke_early)
 
         self._control_bar = container
@@ -340,12 +347,12 @@ class KaraokeView(QWidget):
             """)
         self._update_record_tooltip()
 
-    def _toggle_autotune(self) -> None:
-        """Toggle auto-tune post-processing for the recording."""
-        self.session.toggle_autotune()
-        if self.session.is_autotune_enabled():
-            self.autotune_btn.setText("✨ Auto-Tune ON")
-            self.autotune_btn.setStyleSheet("""
+    def _toggle_original_track(self) -> None:
+        """Toggle guide track: instrumental <-> original song with vocals."""
+        self.session.toggle_original_track()
+        if self.session.is_playing_original():
+            self.original_btn.setText("🎙️ Original ON")
+            self.original_btn.setStyleSheet("""
                 QPushButton {
                     background: rgba(180, 255, 57, 0.2);
                     border: 1px solid rgba(180, 255, 57, 0.6);
@@ -359,12 +366,11 @@ class KaraokeView(QWidget):
                     background: rgba(180, 255, 57, 0.3);
                 }
             """)
-            self._show_toast("Auto-tune enabled — will process on save")
+            self._show_toast("Playing original song with vocals")
         else:
-            self.autotune_btn.setText("✨ Auto-Tune")
-            self.autotune_btn.setStyleSheet(self._normal_btn_style())
-            self._show_toast("Auto-tune disabled")
-        self._update_record_tooltip()
+            self.original_btn.setText("🎙️ Original")
+            self.original_btn.setStyleSheet(self._normal_btn_style())
+            self._show_toast("Playing karaoke instrumental")
 
     def _normal_btn_style(self) -> str:
         """Standard control button style."""
@@ -387,10 +393,7 @@ class KaraokeView(QWidget):
     def _update_record_tooltip(self) -> None:
         """Show what will happen when the session ends."""
         if self.session.is_recording():
-            if self.session.is_autotune_enabled():
-                status = "Recording — auto-tune will apply on save"
-            else:
-                status = "Recording — raw version will be saved"
+            status = "Recording — will be saved when the session ends"
         else:
             status = ""
         self.record_btn.setToolTip(status)
