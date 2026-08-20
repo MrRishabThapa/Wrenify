@@ -21,7 +21,6 @@ from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from wrenify.audio.capture import AudioCapture
 from wrenify.audio.player import AudioPlayer
-from wrenify.core.config import CONFIG
 from wrenify.karaoke.matcher import LyricTracker
 from wrenify.karaoke.timeline import Timeline
 from wrenify.lyrics.parser import LRCParser
@@ -46,7 +45,7 @@ class KaraokeSession(QObject):
     finished_signal = pyqtSignal()  # No arguments — no score to report
     audio_level_signal = pyqtSignal(float)  # RMS 0.0 to 1.0
     recording_toggled  = pyqtSignal(bool)   # True = recording, False = not
-    autotune_toggled   = pyqtSignal(bool)   # True = autotune on save
+    original_track_toggled = pyqtSignal(bool)  # True = playing original
 
     UI_UPDATE_INTERVAL_MS: int = 33  # ~30fps
 
@@ -101,8 +100,9 @@ class KaraokeSession(QObject):
         self._recorded_audio: list[np.ndarray] = []
         self._recorded_frames: list = []  # Frame objects from webcam
 
-        # Post-processing toggle: apply auto-tune on save
-        self._autotune_enabled: bool = False
+        # Guide track toggle: play the original song (with vocals) instead
+        # of the isolated instrumental, so users can hear how it's sung.
+        self._playing_original: bool = False
 
         # Song-time when recording started/stopped (for music mixing)
         self._recording_start_song_time: float = 0.0
@@ -229,7 +229,7 @@ class KaraokeSession(QObject):
         self.stop()
 
     def _save_recording(self, sample_rate: int) -> None:
-        """Save recording with music mix and optional auto-tune."""
+        """Save recording with music mix."""
         from wrenify.audio.mixer import AudioMixer
         from wrenify.recordings.manager import RecordingsManager
 
@@ -262,65 +262,50 @@ class KaraokeSession(QObject):
             logger.error(f"Could not load instrumental for mixing: {e}")
             # Continue without mixing — will save voice-only versions
 
-        # Auto-tune voice if enabled
-        voice_autotuned = None
-        if self._autotune_enabled:
-            try:
-                voice_autotuned = self._process_autotune(
-                    voice_samples, sample_rate
-                )
-                logger.success("Auto-tune applied to voice")
-            except Exception as e:
-                logger.error(f"Auto-tune failed: {e}")
-
         saved = manager.save(
             song_title=self.song.title,
             song_artist=self.song.artist,
             sample_rate=sample_rate,
             voice_samples=voice_samples,
-            voice_autotuned=voice_autotuned,
             instrumental_samples=instrumental_samples,
             video_frames=self._recorded_frames or None,
         )
         logger.success(f"Recording saved: {saved.folder.name}")
 
-    def _process_autotune(
-        self, audio: np.ndarray, sample_rate: int
-    ) -> np.ndarray:
-        """Apply auto-tune to the recorded audio (post-processing)."""
-        from wrenify.audio.autotune import AutoTuneEngine
+    def toggle_original_track(self) -> None:
+        """Toggle between Instrumental and Original song playback."""
+        if not self.song.original_path or not self.song.original_path.exists():
+            logger.warning("No original track available to swap to.")
+            return
 
-        # Determine key from song metadata if available
-        song_key = getattr(self.song, "key", None) or CONFIG.autotune.key
-        song_scale = getattr(self.song, "scale", None) or CONFIG.autotune.scale
+        self._playing_original = not self._playing_original
+        self.original_track_toggled.emit(self._playing_original)
 
-        logger.info(f"Auto-tuning recording in {song_key} {song_scale}")
-
-        # Temporarily override config for this song
-        original_key = CONFIG.autotune.key
-        original_scale = CONFIG.autotune.scale
-        CONFIG.autotune.key = song_key
-        CONFIG.autotune.scale = song_scale
-
-        try:
-            engine = AutoTuneEngine()
-            return engine.process_full(audio, sample_rate)
-        finally:
-            # Restore original config
-            CONFIG.autotune.key = original_key
-            CONFIG.autotune.scale = original_scale
-
-    def toggle_autotune(self) -> None:
-        """Toggle whether recording will be auto-tuned on save."""
-        self._autotune_enabled = not self._autotune_enabled
-        self.autotune_toggled.emit(self._autotune_enabled)
-        logger.info(
-            f"Auto-tune {'ENABLED' if self._autotune_enabled else 'DISABLED'} "
-            "for recording"
+        # Hot-swap the audio in the player
+        new_track = (
+            self.song.original_path
+            if self._playing_original
+            else self.song.instrumental_path
         )
 
-    def is_autotune_enabled(self) -> bool:
-        return self._autotune_enabled
+        # Pause briefly to ensure thread safety during the swap,
+        # though the lock should handle it.
+        was_playing = self.player.is_playing()
+        if was_playing:
+            self.player.pause()
+
+        self.player.switch_track(new_track)
+
+        if was_playing:
+            self.player.resume()
+
+        logger.info(
+            f"Switched playback to: "
+            f"{'ORIGINAL' if self._playing_original else 'INSTRUMENTAL'}"
+        )
+
+    def is_playing_original(self) -> bool:
+        return self._playing_original
 
     def pause(self) -> None:
         """Pause the song; the timeline follows the player."""
