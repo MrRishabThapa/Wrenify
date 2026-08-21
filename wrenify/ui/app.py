@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 )
 
 from wrenify.core.config import CONFIG
+from wrenify.core.updater import KoushinEngine, UpdateCheckWorker, UpdateInfo
 from wrenify.karaoke.session import KaraokeSession
 from wrenify.songs.song import Song
 from wrenify.ui.import_view import ImportView
@@ -54,8 +55,10 @@ class MainWindow(QMainWindow):
         self._pre_view: Optional[PreKaraokeView] = None
         self._pending_song: Optional[Song] = None
         self._status_labels: list[QLabel] = []
+        self._update_info: Optional[UpdateInfo] = None
 
         self._build_main_ui()
+        self._start_update_check()
 
     def _build_main_ui(self) -> None:
         self.nav_buttons: list[NavButton] = []
@@ -119,6 +122,10 @@ class MainWindow(QMainWindow):
             exit_item.styleSheet() + " QPushButton#SidebarItem { color: #FF453A; }"
         )  # Tint red
         layout.addWidget(exit_item)
+
+
+        # Update badge placeholder (populated later by _refresh_update_badge)
+        self._update_badge: QLabel | None = None
         return sidebar
 
     def _add_section(self, layout: QVBoxLayout, title: str) -> None:
@@ -272,6 +279,82 @@ class MainWindow(QMainWindow):
             label = QLabel(text)
             status.addPermanentWidget(label)
             self._status_labels.append(label)
+
+    def _start_update_check(self) -> None:
+        """Silently check for updates in background thread."""
+        self._update_info = None
+        thread = QThread()
+        worker = UpdateCheckWorker()
+        worker.moveToThread(thread)
+
+        thread.started.connect(worker.run)
+        worker.finished.connect(lambda info: self._on_update_check_finished(info))
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+
+        thread.start()
+
+    def _on_update_check_finished(self, info: UpdateInfo) -> None:
+        logger.info(f"Update check complete: v{info.current_version} -> v{info.latest_version} (has_update={info.has_update})")
+        self._update_info = info
+        if info.has_update:
+            self._refresh_sidebar_badge()
+
+    def _refresh_sidebar_badge(self) -> None:
+        """Show the update badge above the Exit button in the sidebar."""
+        # Remove existing badge if present
+        if self._update_badge is not None:
+            try:
+                self._update_badge.deleteLater()
+            except Exception:
+                pass
+            self._update_badge = None
+
+        if not self._update_info or not self._update_info.has_update:
+            return
+
+        # Create new badge widget
+        from PyQt6.QtWidgets import QLabel
+        from PyQt6.QtCore import Qt
+
+        self._update_badge = QLabel(f"✨ v{self._update_info.latest_version} Available")
+        self._update_badge.setStyleSheet(f"""
+            QLabel {{
+                color: {THEME.colors.lime};
+                font-size: 12px;
+                font-weight: 600;
+                padding: 8px 12px;
+                background: rgba(180, 255, 57, 0.18);
+                border: 1px solid {THEME.colors.lime};
+                border-radius: 20px;
+                margin: 4px 0;
+            }}
+        """)
+        self._update_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Insert badge after Exit button in sidebar layout
+        # The sidebar is the central widget's child; find it via root layout
+        root = self.centralWidget()
+        if root is not None:
+            # Navigate to sidebar (second widget in root layout)
+            root_layout = root.layout()
+            if root_layout is not None and root_layout.count() >= 2:
+                sidebar = root_layout.itemAt(1).widget()
+                if sidebar is not None:
+                    sidebar_layout = sidebar.layout()
+                    if sidebar_layout is not None:
+                        # Find the Exit button and add badge after it
+                        # The Exit button is the last widget before stretch
+                        count = sidebar_layout.count()
+                        # Add badge at position count-1 (before the stretch)
+                        if count > 0:
+                            # Check if there's a stretch at the end
+                            last_widget = sidebar_layout.itemAt(count - 1)
+                            if last_widget and last_widget.spacerItem():
+                                sidebar_layout.insertWidget(count - 1, self._update_badge)
+                            else:
+                                sidebar_layout.addWidget(self._update_badge, count - 1)
 
     def launch_karaoke_with_song(self, song: Song) -> None:
         """Show the ready screen for a fully-loaded Song."""
