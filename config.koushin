@@ -1,0 +1,15 @@
+[github]
+repo = https://github.com/MrRishabThapa/Wrenify
+
+[project]
+name = Wrenify
+
+[version]
+version-manager = https://raw.githubusercontent.com/MrRishabThapa/Wrenify/master/config.koushin
+version = 0.1.0
+
+[download]
+download_url = https://github.com/MrRishabThapa/Wrenify/archive/refs/heads/master.zip
+
+[changelog]
+notes = v0.1.0 - Initial Release with Demucs vocal separation, WORLD autotune, and liquid glass UI.
