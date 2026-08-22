@@ -316,7 +316,6 @@ class MainWindow(QMainWindow):
 
         # Create new badge widget
         from PyQt6.QtWidgets import QLabel
-        from PyQt6.QtCore import Qt
 
         self._update_badge = QLabel(f"✨ v{self._update_info.latest_version} Available")
         self._update_badge.setStyleSheet(f"""
