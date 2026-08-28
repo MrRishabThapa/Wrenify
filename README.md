@@ -10,13 +10,18 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-8B5CF6?style=flat-square)](./LICENSE)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-B4FF39?style=flat-square)](#)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-8B5CF6?style=flat-square)](https://www.python.org)
+[![Python 3.11–3.12](https://img.shields.io/badge/Python-3.11--3.12-8B5CF6?style=flat-square)](https://www.python.org)
+[![Release: 0.2.0 coming soon](https://img.shields.io/badge/Release-0.2.0%20coming%20soon-FFB86C?style=flat-square)](./CHANGELOG.md)
 
 [Features](#features) · [Install](#installation) · [Usage](#usage) · [FAQ](#faq)
 
 </div>
 
 ---
+
+> **Wrenify 0.2.0 is coming soon.** Follow the [changelog](./CHANGELOG.md) or
+> [releases](https://github.com/MrRishabThapa/Wrenify/releases) for release notes
+> and downloads.
 
 ## What is Wrenify?
 
@@ -83,7 +88,7 @@ First launch runs a 2-minute setup wizard. After that, just double-click to laun
 ### Option 2: From Source (Any Platform)
 
 **Requirements:**
-- Python 3.11 or newer
+- Python 3.11 or 3.12
 - ffmpeg (system package)
 - 8 GB RAM minimum
 - 5 GB free disk space
