@@ -118,6 +118,22 @@ poetry install
 poetry run wrenify
 ```
 
+The Poetry installation must complete successfully before launching Wrenify.
+The current dependency pins support Python 3.11 and 3.12; Python 3.14 is not
+supported because MediaPipe, pedalboard, and their native dependencies may not
+provide compatible wheels.
+
+To verify the OpenCV dependency used by the webcam features:
+
+```bash
+poetry run python -c "import cv2; print(cv2.__version__)"
+```
+
+If VS Code/Pylance reports `Import "cv2" could not be resolved`, select the
+project's Poetry interpreter: `/path/to/Wrenify/.venv/bin/python`. In VS Code,
+use **Python: Select Interpreter**, choose that path, and restart the Pylance
+language server.
+
 ### Windows Installation
 
 Windows support is experimental and requires manual setup. See [CONTRIBUTING.md](./docs/CONTRIBUTING.md) for developer setup notes.
